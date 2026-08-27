@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Reservas Multi-Cancha</title>
+    <title>Sistema de Reservas - Canchas Deportivas</title>
+    <!-- SheetJS para exportar a Excel -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -22,12 +23,12 @@
         }
         .main-wrapper {
             display: grid;
-            grid-template-columns: 340px 1fr;
+            grid-template-columns: 350px 1fr;
             gap: 20px;
             width: 100%;
-            max-width: 1100px;
+            max-width: 1200px;
         }
-        @media (max-width: 900px) {
+        @media (max-width: 950px) {
             .main-wrapper {
                 grid-template-columns: 1fr;
             }
@@ -67,7 +68,7 @@
             object-fit: contain;
         }
         .header h1 {
-            font-size: 1rem;
+            font-size: 1.05rem;
             letter-spacing: 0.5px;
             text-transform: uppercase;
             font-weight: 700;
@@ -111,7 +112,7 @@
         }
         .btn-nav {
             flex: 1;
-            padding: 5px 6px;
+            padding: 6px 4px;
             background-color: #f8fafc;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -120,11 +121,14 @@
             color: #334155;
             cursor: pointer;
         }
+        .btn-nav:hover {
+            background-color: #e2e8f0;
+        }
         .btn-group {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin-top: 4px;
+            margin-top: 6px;
         }
         .btn {
             padding: 11px;
@@ -134,9 +138,11 @@
             font-size: 0.9rem;
             cursor: pointer;
             color: #ffffff;
+            transition: opacity 0.2s;
         }
         .btn:disabled {
             opacity: 0.6;
+            cursor: not-allowed;
         }
         .btn-primary { background-color: #2563eb; }
         .btn-success { background-color: #059669; }
@@ -146,6 +152,7 @@
             padding: 8px;
             border-radius: 6px;
             display: none;
+            line-height: 1.3;
         }
         .status-error {
             background-color: #fee2e2;
@@ -187,11 +194,11 @@
         }
         .grid-canchas {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 12px;
             padding: 16px;
             background: #f8fafc;
-            max-height: 540px;
+            max-height: 560px;
             overflow-y: auto;
         }
         .cancha-column {
@@ -240,19 +247,22 @@
             background: #ef4444;
             color: white;
             border: none;
-            padding: 2px 6px;
+            padding: 3px 6px;
             border-radius: 4px;
             font-size: 0.68rem;
             cursor: pointer;
-            margin-top: 2px;
+            margin-top: 4px;
             align-self: flex-start;
+        }
+        .btn-cancel:hover {
+            background: #dc2626;
         }
     </style>
 </head>
 <body>
 
 <div class="main-wrapper">
-    <!-- PANEL 1: FORMULARIO -->
+    <!-- FORMULARIO -->
     <div class="app-card">
         <div class="header">
             <div class="logo-container">
@@ -276,21 +286,21 @@
             </div>
 
             <div class="form-group">
-                <label for="cboCancha">Cancha / Ubicación:</label>
+                <label for="cboCancha">Cancha / Sede:</label>
                 <select id="cboCancha" class="form-control" onchange="verificarCruceEnVivo()">
-                    <option value="Cancha Sede Norte">Cancha Sede Norte</option>
-                    <option value="Cancha Sede Sur">Cancha Sede Sur</option>
-                    <option value="Cancha Sintética">Cancha Sintética</option>
+                    <option value="Cancha La Esmeralda">Cancha La Esmeralda</option>
+                    <option value="Cancha San Francisco">Cancha San Francisco</option>
+                    <option value="Cancha Coatepeque">Cancha Coatepeque</option>
                 </select>
             </div>
 
             <div class="time-row">
                 <div class="form-group">
-                    <label for="txtHoraInicio">Desde:</label>
+                    <label for="txtHoraInicio">Desde (Inicio):</label>
                     <input type="time" id="txtHoraInicio" class="form-control" onchange="verificarCruceEnVivo()">
                 </div>
                 <div class="form-group">
-                    <label for="txtHoraFin">Hasta:</label>
+                    <label for="txtHoraFin">Hasta (Fin):</label>
                     <input type="time" id="txtHoraFin" class="form-control" onchange="verificarCruceEnVivo()">
                 </div>
             </div>
@@ -304,19 +314,19 @@
 
             <div class="btn-group">
                 <button class="btn btn-primary" id="btnGuardar" onclick="guardarEnGoogleDrive()">☁ Guardar Reserva</button>
-                <button class="btn btn-success" onclick="descargarReporteExcel()">📥 Descargar Excel (.xlsx)</button>
+                <button class="btn btn-success" onclick="descargarReporteExcel()">📥 Descargar Reporte en Excel (.xlsx)</button>
             </div>
         </div>
     </div>
 
-    <!-- PANEL 2: COMPARATIVO POR CANCHAS EN PARALELO -->
+    <!-- COMPARATIVO POR CANCHAS EN PARALELO -->
     <div class="app-card">
         <div class="schedule-header">
             <span id="lblTituloHorario">Disponibilidad por Canchas</span>
             <button onclick="consultarDisponibilidadNube()">🔄 Actualizar</button>
         </div>
         <div class="grid-canchas" id="contenedorMultiCancha">
-            <!-- Se generan columnas independientes por cancha -->
+            <!-- Columnas independientes por cancha -->
         </div>
     </div>
 </div>
@@ -324,8 +334,8 @@
 <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbx6yLVrzyCgpkdoAgHFbjdFEa9OEZPe2iMnoINsBGK0HcSAqXboQmHm2V4ushhGOw7v2g/exec";
 
-    // Lista de canchas disponibles
-    const canchasDisponibles = ["Cancha Sede Norte", "Cancha Sede Sur", "Cancha Sintética"];
+    // Nombres exactos de las canchas sincronizadas
+    const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
     const turnosBase = [
         { ini: "06:00", fin: "07:00" }, { ini: "07:00", fin: "08:00" },
@@ -376,7 +386,7 @@
 
     async function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
-        lbl.textContent = "⏳ Sincronizando...";
+        lbl.textContent = "⏳ Sincronizando con Google Drive...";
 
         try {
             const resp = await fetch(API_URL, { method: "GET", redirect: "follow" });
@@ -384,7 +394,7 @@
             if (Array.isArray(data)) {
                 reservasNube = data;
                 localStorage.setItem('reservas_canchas_nube', JSON.stringify(reservasNube));
-                lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas)`;
+                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
             }
         } catch (e) {
             reservasNube = JSON.parse(localStorage.getItem('reservas_canchas_nube')) || [];
@@ -393,7 +403,6 @@
         renderizarTablasMultiCancha();
     }
 
-    // Renderiza cada cancha en una columna separada
     function renderizarTablasMultiCancha() {
         const fecha = formatearFecha(inputFecha.value);
         const cont = document.getElementById('contenedorMultiCancha');
@@ -525,7 +534,7 @@
 
             mostrarMensaje(`¡Reserva en <strong>${cancha}</strong> guardada exitosamente!`, "ok");
         } catch (e) {
-            mostrarMensaje("Error al conectar.", "error");
+            mostrarMensaje("Error al conectar con Google Sheets.", "error");
         } finally {
             btn.disabled = false;
             btn.textContent = "☁ Guardar Reserva";
@@ -536,7 +545,12 @@
     async function eliminarReserva(fecha, cancha, horaInicio, nombre) {
         if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fecha})?`)) return;
 
-        const payload = { accion: "eliminar", Fecha: fecha, Cancha: cancha, HoraInicio: horaInicio };
+        const payload = { 
+            accion: "eliminar", 
+            Fecha: fecha, 
+            Cancha: cancha, 
+            HoraInicio: horaInicio 
+        };
 
         try {
             await fetch(API_URL, {
@@ -556,7 +570,7 @@
             renderizarTablasMultiCancha();
             mostrarMensaje("Reserva eliminada con éxito.", "ok");
         } catch (e) {
-            mostrarMensaje("Error al eliminar.", "error");
+            mostrarMensaje("Error al eliminar la reserva.", "error");
         } finally {
             consultarDisponibilidadNube();
         }
@@ -574,10 +588,32 @@
             return fA.localeCompare(fB);
         });
 
+        // Hoja 1: Resumen Organizado por Cancha y Fecha
+        const reporteData = [["REPORTE GENERAL DE RESERVAS POR SEDE"], []];
+        const canchasUnicas = [...new Set(ordenadas.map(r => r.Cancha))];
+
+        canchasUnicas.forEach(c => {
+            reporteData.push([`🏟️ CANCHA: ${c}`]);
+            reporteData.push(["Fecha", "Horario", "Cliente", "Estado"]);
+            
+            ordenadas.filter(r => r.Cancha === c).forEach(r => {
+                reporteData.push([r.Fecha, r.Horario, r.Nombre, r.Estado || "Confirmada"]);
+            });
+            reporteData.push([]);
+        });
+
+        const wsRep = XLSX.utils.aoa_to_sheet(reporteData);
+        wsRep['!cols'] = [{ wch: 14 }, { wch: 18 }, { wch: 28 }, { wch: 14 }];
+
+        // Hoja 2: Base de Datos Plana
         const wsBD = XLSX.utils.json_to_sheet(ordenadas);
+
         const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsRep, "Reporte_Sedes");
         XLSX.utils.book_append_sheet(wb, wsBD, "BaseDatos");
-        XLSX.writeFile(wb, "Reporte_MultiCanchas.xlsx");
+
+        XLSX.writeFile(wb, "Reporte_Reservas_MultiSede.xlsx");
+        mostrarMensaje("Archivo Excel descargado exitosamente.", "ok");
     }
 
     consultarDisponibilidadNube();

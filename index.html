@@ -258,6 +258,58 @@
         .btn-cancel:hover {
             background: #dc2626;
         }
+
+        /* Modal Alerta Personalizado para Móviles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+        .modal-box {
+            background: #ffffff;
+            border-radius: 12px;
+            max-width: 380px;
+            width: 100%;
+            padding: 22px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            border-top: 6px solid #dc2626;
+        }
+        .modal-box h3 {
+            color: #991b1b;
+            font-size: 1.15rem;
+            margin-bottom: 10px;
+        }
+        .modal-box p {
+            font-size: 0.9rem;
+            color: #334155;
+            line-height: 1.5;
+            margin-bottom: 18px;
+            text-align: left;
+            background: #fef2f2;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
+        }
+        .modal-btn {
+            background-color: #dc2626;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -331,8 +383,17 @@
             <button onclick="consultarDisponibilidadNube()">🔄 Actualizar</button>
         </div>
         <div class="grid-canchas" id="contenedorMultiCancha">
-            <!-- Columnas independientes generadas por JavaScript -->
+            <!-- Columnas independientes generadas dinámicamente -->
         </div>
+    </div>
+</div>
+
+<!-- Modal Emergente Universal para Teléfonos y PC -->
+<div class="modal-overlay" id="modalConflicto">
+    <div class="modal-box">
+        <h3>⛔ HORARIO YA RESERVADO</h3>
+        <p id="modalTextoDetalle">Esta cancha ya se encuentra ocupada.</p>
+        <button class="modal-btn" onclick="cerrarModal()">Entendido</button>
     </div>
 </div>
 
@@ -341,7 +402,6 @@
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
-    // Horas disponibles en formato de 24h para cálculos internos
     const horasBase = [
         "06:00", "07:00", "08:00", "09:00", "10:00", "11:00",
         "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
@@ -353,28 +413,54 @@
     const inputFecha = document.getElementById('txtFecha');
     inputFecha.valueAsDate = new Date();
 
-    // Convierte "07:00" -> "07:00 AM", "14:00" -> "02:00 PM"
-    function aFormato12H(hora24) {
-        if (!hora24) return "";
-        let str = hora24.toString().trim();
-        if (str.includes("T")) str = str.split("T")[1].substring(0, 5);
-        const partes = str.split(":");
-        if (partes.length >= 2) {
-            let h = parseInt(partes[0], 10);
-            const m = partes[1].substring(0, 2);
-            const ampm = h >= 12 ? "PM" : "AM";
-            h = h % 12;
-            h = h ? h : 12;
-            const hStr = h.toString().padStart(2, "0");
-            return `${hStr}:${m} ${ampm}`;
+    // Normalizador Universal de Fechas a formato estándar 'YYYY-MM-DD'
+    function normalizarAClaveFecha(fechaEntrada) {
+        if (!fechaEntrada) return "";
+        let str = fechaEntrada.toString().trim();
+        
+        // Si viene en formato ISO (ej. "2026-08-27T06:00:00.000Z")
+        if (str.includes("T")) {
+            str = str.split("T")[0];
         }
-        return hora24;
+
+        // Si viene como DD/MM/YYYY
+        if (str.includes("/")) {
+            const p = str.split("/");
+            if (p.length === 3) {
+                const d = p[0].padStart(2, "0");
+                const m = p[1].padStart(2, "0");
+                const y = p[2].length === 2 ? "20" + p[2] : p[2];
+                return `${y}-${m}-${d}`;
+            }
+        }
+
+        // Si viene como YYYY-MM-DD
+        if (str.includes("-")) {
+            const p = str.split("-");
+            if (p.length === 3) {
+                const y = p[0];
+                const m = p[1].padStart(2, "0");
+                const d = p[2].padStart(2, "0");
+                return `${y}-${m}-${d}`;
+            }
+        }
+
+        return str;
     }
 
-    // Normaliza cualquier hora a formato estándar 24H HH:MM para comparaciones exactas
+    // Convierte 'YYYY-MM-DD' a 'DD/MM/YYYY' para visualización
+    function formatearFechaVisual(claveFecha) {
+        if (!claveFecha) return "";
+        const p = claveFecha.split("-");
+        if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+        return claveFecha;
+    }
+
+    // Normaliza cualquier hora a formato estándar 24H 'HH:MM'
     function aFormato24H(horaStr) {
         if (!horaStr) return "";
         let str = horaStr.toString().trim().toUpperCase();
+        
         if (str.includes("AM") || str.includes("PM")) {
             const esPM = str.includes("PM");
             const limpia = str.replace("AM", "").replace("PM", "").trim();
@@ -383,9 +469,11 @@
             const m = partes[1] ? partes[1].substring(0, 2) : "00";
             if (esPM && h < 12) h += 12;
             if (!esPM && h === 12) h = 0;
-            return `${h.toString().padStart(2, "0")}:${m}`;
+            return `${h.toString().padStart(2, "0")}:${m.padStart(2, "0")}`;
         }
+
         if (str.includes("T")) str = str.split("T")[1].substring(0, 5);
+        
         const partes = str.split(":");
         if (partes.length >= 2) {
             return `${partes[0].padStart(2, "0")}:${partes[1].substring(0, 2).padStart(2, "0")}`;
@@ -393,7 +481,21 @@
         return str;
     }
 
-    // Llenar selectores de hora en formato 12 horas
+    function aFormato12H(hora24) {
+        if (!hora24) return "";
+        const h24 = aFormato24H(hora24);
+        const partes = h24.split(":");
+        if (partes.length >= 2) {
+            let h = parseInt(partes[0], 10);
+            const m = partes[1];
+            const ampm = h >= 12 ? "PM" : "AM";
+            h = h % 12;
+            h = h ? h : 12;
+            return `${h.toString().padStart(2, "0")}:${m} ${ampm}`;
+        }
+        return hora24;
+    }
+
     function inicializarSelectoresHora() {
         const cboIni = document.getElementById('cboHoraInicio');
         const cboFin = document.getElementById('cboHoraFin');
@@ -417,11 +519,20 @@
         });
     }
 
-    function formatearFecha(fechaISO) {
-        if (!fechaISO) return "";
-        const partes = fechaISO.split('-');
-        if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
-        return fechaISO;
+    function mostrarModalAlerta(cancha, fecha, horario, nombre) {
+        const modal = document.getElementById('modalConflicto');
+        const txt = document.getElementById('modalTextoDetalle');
+        txt.innerHTML = `
+            📍 <b>Cancha:</b> ${cancha}<br>
+            📅 <b>Fecha:</b> ${fecha}<br>
+            ⏰ <b>Horario:</b> ${horario}<br>
+            👤 <b>Reservado por:</b> ${nombre}
+        `;
+        modal.style.display = "flex";
+    }
+
+    function cerrarModal() {
+        document.getElementById('modalConflicto').style.display = "none";
     }
 
     function navegarDias(delta) {
@@ -452,23 +563,30 @@
 
     async function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
-        lbl.textContent = "⏳ Sincronizando con Google Drive...";
+        lbl.textContent = "⏳ Sincronizando...";
 
         try {
             const resp = await fetch(API_URL, { method: "GET", redirect: "follow" });
             const data = await resp.json();
             if (Array.isArray(data)) {
-                reservasNube = data.map(r => ({
-                    Fecha: r.Fecha || "",
-                    HoraInicio: aFormato24H(r.HoraInicio),
-                    HoraFin: aFormato24H(r.HoraFin),
-                    Horario: `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`,
-                    Nombre: r.Nombre || "",
-                    Cancha: r.Cancha || "",
-                    Estado: r.Estado || "Confirmada"
-                }));
+                // Estandarización de toda la base de datos
+                reservasNube = data.map(r => {
+                    const claveF = normalizarAClaveFecha(r.Fecha);
+                    const hIni = aFormato24H(r.HoraInicio);
+                    const hFin = aFormato24H(r.HoraFin);
+                    return {
+                        ClaveFecha: claveF,
+                        Fecha: formatearFechaVisual(claveF),
+                        HoraInicio: hIni,
+                        HoraFin: hFin,
+                        Horario: `${aFormato12H(hIni)} a ${aFormato12H(hFin)}`,
+                        Nombre: r.Nombre || "",
+                        Cancha: (r.Cancha || "").trim(),
+                        Estado: r.Estado || "Confirmada"
+                    };
+                });
                 localStorage.setItem('reservas_canchas_nube', JSON.stringify(reservasNube));
-                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
+                lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas)`;
             }
         } catch (e) {
             reservasNube = JSON.parse(localStorage.getItem('reservas_canchas_nube')) || [];
@@ -477,10 +595,27 @@
         renderizarTablasMultiCancha();
     }
 
+    // Detección exacta de colisión de horario
+    function buscarConflicto(claveFecha, cancha, hIni, hFin) {
+        return reservasNube.find(r => {
+            const matchFecha = (r.ClaveFecha === claveFecha || normalizarAClaveFecha(r.Fecha) === claveFecha);
+            const matchCancha = (r.Cancha.toUpperCase() === cancha.toUpperCase());
+            
+            if (matchFecha && matchCancha) {
+                const rIni = aFormato24H(r.HoraInicio);
+                const rFin = aFormato24H(r.HoraFin);
+                // Hay traslape si (NuevoInicio < FinExistente) y (NuevoFin > InicioExistente)
+                return (hIni < rFin && hFin > rIni);
+            }
+            return false;
+        });
+    }
+
     function renderizarTablasMultiCancha() {
-        const fecha = formatearFecha(inputFecha.value);
+        const claveFecha = normalizarAClaveFecha(inputFecha.value);
+        const fechaVisual = formatearFechaVisual(claveFecha);
         const cont = document.getElementById('contenedorMultiCancha');
-        document.getElementById('lblTituloHorario').textContent = `📅 Horarios: ${fecha}`;
+        document.getElementById('lblTituloHorario').textContent = `📅 Horarios: ${fechaVisual}`;
         cont.innerHTML = "";
 
         canchasDisponibles.forEach(cancha => {
@@ -492,11 +627,7 @@
                 const tIni = horasBase[i];
                 const tFin = horasBase[i + 1];
 
-                const res = reservasNube.find(r => 
-                    r.Fecha === fecha &&
-                    r.Cancha.trim().toUpperCase() === cancha.trim().toUpperCase() &&
-                    (tIni < aFormato24H(r.HoraFin) && tFin > aFormato24H(r.HoraInicio))
-                );
+                const res = buscarConflicto(claveFecha, cancha, tIni, tFin);
 
                 const item = document.createElement('div');
                 if (res) {
@@ -507,7 +638,7 @@
                             <span>🔴 Ocupado</span>
                         </div>
                         <div>Cliente: <b>${res.Nombre}</b></div>
-                        <button class="btn-cancel" onclick="eliminarReserva('${res.Fecha}', '${res.Cancha}', '${res.HoraInicio}', '${res.Nombre}')">✕ Cancelar</button>
+                        <button class="btn-cancel" onclick="eliminarReserva('${res.ClaveFecha}', '${res.Cancha}', '${res.HoraInicio}', '${res.Nombre}')">✕ Cancelar</button>
                     `;
                 } else {
                     item.className = "slot-item slot-libre";
@@ -526,28 +657,23 @@
     }
 
     function verificarCruceEnVivo() {
-        const fecha = formatearFecha(inputFecha.value);
-        const horaInicio = document.getElementById('cboHoraInicio').value;
-        const horaFin = document.getElementById('cboHoraFin').value;
+        const claveFecha = normalizarAClaveFecha(inputFecha.value);
+        const horaInicio = aFormato24H(document.getElementById('cboHoraInicio').value);
+        const horaFin = aFormato24H(document.getElementById('cboHoraFin').value);
         const cancha = document.getElementById('cboCancha').value;
 
-        if (!fecha || !horaInicio || !horaFin || !cancha) return false;
+        if (!claveFecha || !horaInicio || !horaFin || !cancha) return false;
 
         if (horaInicio >= horaFin) {
             mostrarMensaje("⚠️ La hora final debe ser posterior a la hora de inicio.", "error");
             return false;
         }
 
-        const conflicto = reservasNube.find(r => {
-            return (
-                r.Fecha === fecha &&
-                r.Cancha.trim().toUpperCase() === cancha.trim().toUpperCase() &&
-                (horaInicio < aFormato24H(r.HoraFin) && horaFin > aFormato24H(r.HoraInicio))
-            );
-        });
+        const conflicto = buscarConflicto(claveFecha, cancha, horaInicio, horaFin);
 
         if (conflicto) {
-            mostrarMensaje(`⛔ <strong>${cancha}</strong> YA ESTÁ OCUPADA de ${aFormato12H(conflicto.HoraInicio)} a ${aFormato12H(conflicto.HoraFin)} por <strong>${conflicto.Nombre}</strong>.`, "error");
+            const hConflict12 = `${aFormato12H(conflicto.HoraInicio)} a ${aFormato12H(conflicto.HoraFin)}`;
+            mostrarMensaje(`⛔ <strong>${cancha}</strong> YA ESTÁ RESERVADA de ${hConflict12} por <strong>${conflicto.Nombre}</strong>.`, "error");
             return true;
         } else {
             document.getElementById('statusAlert').style.display = "none";
@@ -556,44 +682,40 @@
     }
 
     async function guardarEnGoogleDrive() {
-        const fecha = formatearFecha(inputFecha.value);
-        const horaInicio = document.getElementById('cboHoraInicio').value;
-        const horaFin = document.getElementById('cboHoraFin').value;
+        const claveFecha = normalizarAClaveFecha(inputFecha.value);
+        const fechaVisual = formatearFechaVisual(claveFecha);
+        const horaInicio = aFormato24H(document.getElementById('cboHoraInicio').value);
+        const horaFin = aFormato24H(document.getElementById('cboHoraFin').value);
         const nombre = document.getElementById('txtNombre').value.trim();
         const cancha = document.getElementById('cboCancha').value;
         const btn = document.getElementById('btnGuardar');
 
-        if (!fecha || !horaInicio || !horaFin || !nombre || !cancha) {
-            mostrarMensaje("Por favor completa todos los campos.", "error");
-            alert("Por favor completa todos los campos antes de guardar.");
+        if (!claveFecha || !horaInicio || !horaFin || !nombre || !cancha) {
+            mostrarMensaje("Por favor completa todos los campos requeridos.", "error");
             return;
         }
 
         if (horaInicio >= horaFin) {
             mostrarMensaje("La hora final debe ser posterior a la hora de inicio.", "error");
-            alert("La hora final debe ser posterior a la hora de inicio.");
             return;
         }
 
-        const hayConflicto = reservasNube.find(r => {
-            return (
-                r.Fecha === fecha &&
-                r.Cancha.trim().toUpperCase() === cancha.trim().toUpperCase() &&
-                (horaInicio < aFormato24H(r.HoraFin) && horaFin > aFormato24H(r.HoraInicio))
-            );
-        });
+        // Validación estricta de duplicado
+        const conflicto = buscarConflicto(claveFecha, cancha, horaInicio, horaFin);
 
-        if (hayConflicto) {
-            const msj = `⚠️ LA CANCHA YA ESTÁ UTILIZADA ⚠️\n\n• Cancha: ${cancha}\n• Fecha: ${fecha}\n• Horario: ${aFormato12H(hayConflicto.HoraInicio)} a ${aFormato12H(hayConflicto.HoraFin)}\n• Cliente: ${hayConflicto.Nombre}\n\nPor favor elija otro horario.`;
-            mostrarMensaje(`⛔ <strong>${cancha}</strong> ya está utilizada de ${aFormato12H(hayConflicto.HoraInicio)} a ${aFormato12H(hayConflicto.HoraFin)} por <strong>${hayConflicto.Nombre}</strong>.`, "error");
-            alert(msj);
+        if (conflicto) {
+            const hConflict12 = `${aFormato12H(conflicto.HoraInicio)} a ${aFormato12H(conflicto.HoraFin)}`;
+            mostrarMensaje(`⛔ <strong>${cancha}</strong> ya está reservada de ${hConflict12} por <strong>${conflicto.Nombre}</strong>.`, "error");
+            // Disparar ventana modal (100% visible en teléfonos)
+            mostrarModalAlerta(cancha, fechaVisual, hConflict12, conflicto.Nombre);
             return;
         }
 
         const horario12H = `${aFormato12H(horaInicio)} a ${aFormato12H(horaFin)}`;
 
         const nuevaReserva = {
-            Fecha: fecha,
+            ClaveFecha: claveFecha,
+            Fecha: fechaVisual,
             HoraInicio: aFormato12H(horaInicio),
             HoraFin: aFormato12H(horaFin),
             Horario: horario12H,
@@ -614,7 +736,8 @@
             });
 
             reservasNube.push({
-                Fecha: fecha,
+                ClaveFecha: claveFecha,
+                Fecha: fechaVisual,
                 HoraInicio: horaInicio,
                 HoraFin: horaFin,
                 Horario: horario12H,
@@ -630,10 +753,9 @@
             document.getElementById('cboHoraFin').value = '';
             document.getElementById('txtNombre').value = '';
 
-            mostrarMensaje(`¡Reserva en <strong>${cancha}</strong> guardada exitosamente (${horario12H})!`, "ok");
-            alert(`¡Reserva confirmada con éxito para ${cancha} de ${horario12H}!`);
+            mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
         } catch (e) {
-            mostrarMensaje("Error al conectar con Google Sheets.", "error");
+            mostrarMensaje("Error al sincronizar con Google Sheets.", "error");
         } finally {
             btn.disabled = false;
             btn.textContent = "☁ Guardar Reserva";
@@ -641,13 +763,15 @@
         }
     }
 
-    async function eliminarReserva(fecha, cancha, horaInicio, nombre) {
+    async function eliminarReserva(claveFecha, cancha, horaInicio, nombre) {
+        const fechaVisual = formatearFechaVisual(claveFecha);
         const hora12H = aFormato12H(horaInicio);
-        if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fecha} a las ${hora12H})?`)) return;
+        
+        if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fechaVisual} a las ${hora12H})?`)) return;
 
         const payload = { 
             accion: "eliminar", 
-            Fecha: fecha, 
+            Fecha: fechaVisual, 
             Cancha: cancha, 
             HoraInicio: aFormato24H(horaInicio)
         };
@@ -661,16 +785,16 @@
             });
 
             reservasNube = reservasNube.filter(r => !(
-                r.Fecha === fecha && 
-                r.Cancha.trim().toUpperCase() === cancha.trim().toUpperCase() && 
+                (r.ClaveFecha === claveFecha || normalizarAClaveFecha(r.Fecha) === claveFecha) && 
+                r.Cancha.toUpperCase() === cancha.toUpperCase() && 
                 aFormato24H(r.HoraInicio) === aFormato24H(horaInicio)
             ));
             
             localStorage.setItem('reservas_canchas_nube', JSON.stringify(reservasNube));
             renderizarTablasMultiCancha();
-            mostrarMensaje("Reserva eliminada con éxito.", "ok");
+            mostrarMensaje("Reserva cancelada con éxito.", "ok");
         } catch (e) {
-            mostrarMensaje("Error al eliminar la reserva.", "error");
+            mostrarMensaje("Error al cancelar la reserva.", "error");
         } finally {
             consultarDisponibilidadNube();
         }
@@ -683,18 +807,18 @@
         }
 
         const ordenadas = [...reservasNube].sort((a, b) => {
-            const fA = a.Fecha.split('/').reverse().join('') + a.Cancha + aFormato24H(a.HoraInicio);
-            const fB = b.Fecha.split('/').reverse().join('') + b.Cancha + aFormato24H(b.HoraInicio);
+            const fA = a.ClaveFecha + a.Cancha + aFormato24H(a.HoraInicio);
+            const fB = b.ClaveFecha + b.Cancha + aFormato24H(b.HoraInicio);
             return fA.localeCompare(fB);
         });
 
-        // Hoja 1: Resumen con formato de 12 Horas
+        // Hoja 1: Resumen Organizado
         const reporteData = [["REPORTE GENERAL DE RESERVAS POR SEDE"], []];
         const canchasUnicas = [...new Set(ordenadas.map(r => r.Cancha))];
 
         canchasUnicas.forEach(c => {
             reporteData.push([`🏟️ CANCHA: ${c}`]);
-            reporteData.push(["Fecha", "Horario (12 Horas)", "Cliente", "Estado"]);
+            reporteData.push(["Fecha", "Horario (12H)", "Cliente", "Estado"]);
             
             ordenadas.filter(r => r.Cancha === c).forEach(r => {
                 const h12 = `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`;
@@ -706,7 +830,7 @@
         const wsRep = XLSX.utils.aoa_to_sheet(reporteData);
         wsRep['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 28 }, { wch: 14 }];
 
-        // Hoja 2: Base de Datos con horas legibles en 12h
+        // Hoja 2: Base de Datos
         const wsBD = XLSX.utils.json_to_sheet(ordenadas.map(r => ({
             "Fecha": r.Fecha,
             "Hora Inicio": aFormato12H(aFormato24H(r.HoraInicio)),

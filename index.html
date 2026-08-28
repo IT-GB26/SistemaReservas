@@ -367,7 +367,7 @@
                 <input type="text" id="txtNombre" class="form-control" placeholder="Ej. Juan Pérez">
             </div>
 
-            <div class="cloud-badge" id="lblSyncStatus">🟢 Conectado con Google Drive</div>
+            <div class="cloud-badge" id="lblSyncStatus">🟢 Conectando con Google Drive...</div>
 
             <div class="btn-group">
                 <button class="btn btn-primary" id="btnGuardar" onclick="guardarEnGoogleDrive()">☁ Guardar Reserva</button>
@@ -395,12 +395,8 @@
     </div>
 </div>
 
-<!-- Envío invisible 100% inmune -->
-<iframe name="iframe_oculto" id="iframe_oculto" style="display:none;"></iframe>
-<form id="form_envio_nube" method="GET" target="iframe_oculto" style="display:none;"></form>
-
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbyhMB4WRmljel6bZlJcP_ye2Hel_XyS7CIeiJHlbt0XkDsk-MHpFlmlph4KyMMzVn3F-g/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxxs_skL40ncgz0DsPivFF9Sy25mFkicIpHvtwon5h8Rqr8q5SpHC5lymz33CHQ40npEg/exec";
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
@@ -423,51 +419,44 @@
 
     inputFecha.value = obtenerFechaLocalISO();
 
-    // Normalizador que unifica DD/MM/YYYY o YYYY-MM-DD a 'YYYY-MM-DD'
-    function normalizarAClaveFecha(fechaEntrada) {
-        if (!fechaEntrada) return "";
-        let str = fechaEntrada.toString().trim().replace(/^'/, "");
-        if (str.includes("T")) str = str.split("T")[0];
+    // Normalizador de fecha universal (Siempre devuelve YYYY-MM-DD)
+    function normalizarFecha(str) {
+        if (!str) return "";
+        let s = str.toString().trim();
+        if (s.includes("T")) s = s.split("T")[0];
         
-        if (str.includes("/")) {
-            const p = str.split("/");
+        if (s.includes("/")) {
+            const p = s.split("/");
             if (p.length === 3) {
-                const dia = p[0].padStart(2, "0");
-                const mes = p[1].padStart(2, "0");
-                const anio = p[2].length === 2 ? '20' + p[2] : p[2];
-                return `${anio}-${mes}-${dia}`;
+                const d = p[0].padStart(2, "0");
+                const m = p[1].padStart(2, "0");
+                const y = p[2].length === 2 ? '20' + p[2] : p[2];
+                return `${y}-${m}-${d}`;
             }
         }
-        if (str.includes("-")) {
-            const p = str.split("-");
+        if (s.includes("-")) {
+            const p = s.split("-");
             if (p.length === 3) {
                 if (p[0].length === 4) return `${p[0]}-${p[1].padStart(2, "0")}-${p[2].padStart(2, "0")}`;
                 return `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
             }
         }
-        return str;
+        return s;
     }
 
-    function formatearFechaVisual(claveFecha) {
-        if (!claveFecha) return "";
-        const p = claveFecha.split("-");
-        if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
-        return claveFecha;
-    }
-
-    // Convierte cualquier formato horario a minutos (0-1440)
-    function horaAMinutos(horaStr) {
+    // Convierte cualquier formato horario a minutos del día (0 - 1440)
+    function aMinutos(horaStr) {
         if (!horaStr) return 0;
-        let str = horaStr.toString().trim().toUpperCase().replace(/^'/, "");
-        let esPM = str.includes("PM");
-        let esAM = str.includes("AM");
-        str = str.replace("AM", "").replace("PM", "").trim();
-        
-        if (str.includes("T")) str = str.split("T")[1].substring(0, 5);
-        
-        const partes = str.split(":");
-        let h = parseInt(partes[0] || "0", 10);
-        let m = parseInt(partes[1] || "0", 10);
+        let s = horaStr.toString().trim().toUpperCase();
+        let esPM = s.includes("PM");
+        let esAM = s.includes("AM");
+        s = s.replace("AM", "").replace("PM", "").trim();
+
+        if (s.includes("T")) s = s.split("T")[1].substring(0, 5);
+
+        const p = s.split(":");
+        let h = parseInt(p[0] || "0", 10);
+        let m = parseInt(p[1] || "0", 10);
 
         if (esPM && h < 12) h += 12;
         if (esAM && h === 12) h = 0;
@@ -475,9 +464,8 @@
         return (h * 60) + m;
     }
 
-    function aFormato12H(horaStr) {
-        if (!horaStr) return "";
-        const mins = horaAMinutos(horaStr);
+    function a12H(hora24) {
+        const mins = aMinutos(hora24);
         let h = Math.floor(mins / 60);
         const m = (mins % 60).toString().padStart(2, "0");
         const ampm = h >= 12 ? "PM" : "AM";
@@ -486,9 +474,8 @@
         return `${h.toString().padStart(2, "0")}:${m} ${ampm}`;
     }
 
-    function aFormato24H(horaStr) {
-        if (!horaStr) return "";
-        const mins = horaAMinutos(horaStr);
+    function a24H(horaStr) {
+        const mins = aMinutos(horaStr);
         const h = Math.floor(mins / 60).toString().padStart(2, "0");
         const m = (mins % 60).toString().padStart(2, "0");
         return `${h}:${m}`;
@@ -504,13 +491,13 @@
             if (index < horasBase.length - 1) {
                 const optIni = document.createElement('option');
                 optIni.value = h;
-                optIni.textContent = aFormato12H(h);
+                optIni.textContent = a12H(h);
                 cboIni.appendChild(optIni);
             }
             if (index > 0) {
                 const optFin = document.createElement('option');
                 optFin.value = h;
-                optFin.textContent = aFormato12H(h);
+                optFin.textContent = a12H(h);
                 cboFin.appendChild(optFin);
             }
         });
@@ -559,7 +546,7 @@
         box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    // CONSULTA COMPLETA Y MAPEADA DESDE GOOGLE DRIVE
+    // CONSULTA DIRECTA DE GOOGLE SHEETS
     async function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
         try {
@@ -568,55 +555,50 @@
                 redirect: "follow" 
             });
             const data = await resp.json();
+            
             if (Array.isArray(data)) {
-                reservasNube = data.map(r => {
-                    const claveF = normalizarAClaveFecha(r.Fecha);
-                    const minIni = horaAMinutos(r.HoraInicio);
-                    const minFin = horaAMinutos(r.HoraFin);
-                    
-                    return {
-                        ClaveFecha: claveF,
-                        Fecha: formatearFechaVisual(claveF),
-                        MinInicio: minIni,
-                        MinFin: minFin,
-                        HoraInicio: aFormato24H(r.HoraInicio),
-                        HoraFin: aFormato24H(r.HoraFin),
-                        Horario: `${aFormato12H(r.HoraInicio)} a ${aFormato12H(r.HoraFin)}`,
-                        Nombre: (r.Nombre || "").replace(/^'/, "").trim(),
-                        Cancha: (r.Cancha || "").replace(/^'/, "").trim(),
-                        Estado: (r.Estado || "Confirmada").replace(/^'/, "").trim()
-                    };
-                });
-                lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas registradas)`;
+                reservasNube = data.map(r => ({
+                    Fecha: normalizarFecha(r.Fecha),
+                    HoraInicio: a24H(r.HoraInicio),
+                    HoraFin: a24H(r.HoraFin),
+                    MinInicio: aMinutos(r.HoraInicio),
+                    MinFin: aMinutos(r.HoraFin),
+                    Horario: `${a12H(r.HoraInicio)} a ${a12H(r.HoraFin)}`,
+                    Nombre: (r.Nombre || "").trim(),
+                    Cancha: (r.Cancha || "").trim(),
+                    Estado: (r.Estado || "Confirmada").trim()
+                }));
+
+                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
             }
         } catch (e) {
-            lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
+            lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas)`;
         }
         renderizarTablasMultiCancha();
     }
 
-    // Comprobación de coincidencia exacta por minutos enteros (evita fallos de formato)
-    function buscarConflicto(claveFecha, cancha, hIniStr, hFinStr) {
-        const minInicioNuevo = horaAMinutos(hIniStr);
-        const minFinNuevo = horaAMinutos(hFinStr);
+    // Búsqueda matemática de cruce horario
+    function buscarConflicto(fechaISO, cancha, hIniStr, hFinStr) {
+        const minIni = aMinutos(hIniStr);
+        const minFin = aMinutos(hFinStr);
 
         return reservasNube.find(r => {
-            const matchFecha = (r.ClaveFecha === claveFecha);
+            const matchFecha = (r.Fecha === fechaISO);
             const matchCancha = (r.Cancha.toUpperCase() === cancha.toUpperCase());
 
             if (matchFecha && matchCancha) {
-                // Hay cruce si (InicioNuevo < FinExistente) y (FinNuevo > InicioExistente)
-                return (minInicioNuevo < r.MinFin && minFinNuevo > r.MinInicio);
+                return (minIni < r.MinFin && minFin > r.MinInicio);
             }
             return false;
         });
     }
 
     function renderizarTablasMultiCancha() {
-        const claveFecha = normalizarAClaveFecha(inputFecha.value);
-        const fechaVisual = formatearFechaVisual(claveFecha);
+        const fechaActual = normalizarFecha(inputFecha.value);
         const cont = document.getElementById('contenedorMultiCancha');
-        document.getElementById('lblTituloHorario').textContent = `📅 Horarios: ${fechaVisual}`;
+        
+        const [y, m, d] = fechaActual.split("-");
+        document.getElementById('lblTituloHorario').textContent = `📅 Horarios: ${d}/${m}/${y}`;
         cont.innerHTML = "";
 
         canchasDisponibles.forEach(cancha => {
@@ -628,24 +610,24 @@
                 const tIni = horasBase[i];
                 const tFin = horasBase[i + 1];
 
-                const res = buscarConflicto(claveFecha, cancha, tIni, tFin);
+                const res = buscarConflicto(fechaActual, cancha, tIni, tFin);
 
                 const item = document.createElement('div');
                 if (res) {
                     item.className = "slot-item slot-ocupado";
                     item.innerHTML = `
                         <div class="slot-header-row">
-                            <span><b>${aFormato12H(tIni)} - ${aFormato12H(tFin)}</b></span>
+                            <span><b>${a12H(tIni)} - ${a12H(tFin)}</b></span>
                             <span>🔴 Ocupado</span>
                         </div>
                         <div>Cliente: <b>${res.Nombre}</b></div>
-                        <button class="btn-cancel" onclick="eliminarReserva('${res.ClaveFecha}', '${res.Cancha}', '${res.HoraInicio}', '${res.Nombre}')">✕ Cancelar</button>
+                        <button class="btn-cancel" onclick="eliminarReserva('${res.Fecha}', '${res.Cancha}', '${res.HoraInicio}', '${res.Nombre}')">✕ Cancelar</button>
                     `;
                 } else {
                     item.className = "slot-item slot-libre";
                     item.innerHTML = `
                         <div class="slot-header-row">
-                            <span>${aFormato12H(tIni)} - ${aFormato12H(tFin)}</span>
+                            <span>${a12H(tIni)} - ${a12H(tFin)}</span>
                             <span>🟢 Libre</span>
                         </div>
                     `;
@@ -658,22 +640,22 @@
     }
 
     function verificarCruceEnVivo() {
-        const claveFecha = normalizarAClaveFecha(inputFecha.value);
+        const fecha = normalizarFecha(inputFecha.value);
         const horaInicio = document.getElementById('cboHoraInicio').value;
         const horaFin = document.getElementById('cboHoraFin').value;
         const cancha = document.getElementById('cboCancha').value;
 
-        if (!claveFecha || !horaInicio || !horaFin || !cancha) return false;
+        if (!fecha || !horaInicio || !horaFin || !cancha) return false;
 
-        if (horaAMinutos(horaInicio) >= horaAMinutos(horaFin)) {
+        if (aMinutos(horaInicio) >= aMinutos(horaFin)) {
             mostrarMensaje("⚠️ La hora final debe ser posterior a la hora de inicio.", "error");
             return false;
         }
 
-        const conflicto = buscarConflicto(claveFecha, cancha, horaInicio, horaFin);
+        const conflicto = buscarConflicto(fecha, cancha, horaInicio, horaFin);
 
         if (conflicto) {
-            const hConflict12 = `${aFormato12H(conflicto.HoraInicio)} a ${aFormato12H(conflicto.HoraFin)}`;
+            const hConflict12 = `${a12H(conflicto.HoraInicio)} a ${a12H(conflicto.HoraFin)}`;
             mostrarMensaje(`⛔ <strong>${cancha}</strong> YA ESTÁ RESERVADA de ${hConflict12} por <strong>${conflicto.Nombre}</strong>.`, "error");
             return true;
         } else {
@@ -682,97 +664,96 @@
         }
     }
 
-    function enviarDatosNube(objetoParametros) {
-        const form = document.getElementById('form_envio_nube');
-        form.action = API_URL;
-        form.innerHTML = "";
-        
-        for (const [key, value] of Object.entries(objetoParametros)) {
-            const input = document.createElement('input');
-            input.type = "hidden";
-            input.name = key;
-            input.value = value;
-            form.appendChild(input);
-        }
-        form.submit();
-    }
-
     async function guardarEnGoogleDrive() {
-        const claveFecha = normalizarAClaveFecha(inputFecha.value);
-        const fechaVisual = formatearFechaVisual(claveFecha);
-        const horaInicio = aFormato24H(document.getElementById('cboHoraInicio').value);
-        const horaFin = aFormato24H(document.getElementById('cboHoraFin').value);
+        const fecha = normalizarFecha(inputFecha.value);
+        const horaInicio = document.getElementById('cboHoraInicio').value;
+        const horaFin = document.getElementById('cboHoraFin').value;
         const nombre = document.getElementById('txtNombre').value.trim();
         const cancha = document.getElementById('cboCancha').value;
         const btn = document.getElementById('btnGuardar');
 
-        if (!claveFecha || !horaInicio || !horaFin || !nombre || !cancha) {
+        if (!fecha || !horaInicio || !horaFin || !nombre || !cancha) {
             mostrarMensaje("⚠️ Por favor completa todos los campos requeridos.", "error");
             return;
         }
 
-        if (horaAMinutos(horaInicio) >= horaAMinutos(horaFin)) {
+        if (aMinutos(horaInicio) >= aMinutos(horaFin)) {
             mostrarMensaje("⚠️ La hora final debe ser mayor que la hora inicial.", "error");
             return;
         }
 
-        const conflicto = buscarConflicto(claveFecha, cancha, horaInicio, horaFin);
+        const conflicto = buscarConflicto(fecha, cancha, horaInicio, horaFin);
         if (conflicto) {
-            const hConflict12 = `${aFormato12H(conflicto.HoraInicio)} a ${aFormato12H(conflicto.HoraFin)}`;
+            const hConflict12 = `${a12H(conflicto.HoraInicio)} a ${a12H(conflicto.HoraFin)}`;
             mostrarMensaje(`⛔ <strong>${cancha}</strong> ya está reservada de ${hConflict12} por <strong>${conflicto.Nombre}</strong>.`, "error");
-            mostrarModalAlerta(cancha, fechaVisual, hConflict12, conflicto.Nombre);
+            mostrarModalAlerta(cancha, fecha, hConflict12, conflicto.Nombre);
             return;
         }
 
-        const horario12H = `${aFormato12H(horaInicio)} a ${aFormato12H(horaFin)}`;
+        const horario12H = `${a12H(horaInicio)} a ${a12H(horaFin)}`;
 
         btn.disabled = true;
         btn.textContent = "⏳ Guardando en Google Drive...";
 
-        // Guardar físicamente en Google Sheets
-        enviarDatosNube({
+        const queryParams = new URLSearchParams({
             accion: "guardar",
-            Fecha: fechaVisual,
-            HoraInicio: aFormato12H(horaInicio),
-            HoraFin: aFormato12H(horaFin),
+            Fecha: fecha,
+            HoraInicio: a24H(horaInicio),
+            HoraFin: a24H(horaFin),
             Horario: horario12H,
             Nombre: nombre,
             Cancha: cancha,
-            _t: Date.now()
+            _nocache: Date.now()
         });
 
-        document.getElementById('cboHoraInicio').value = '';
-        document.getElementById('cboHoraFin').value = '';
-        document.getElementById('txtNombre').value = '';
+        try {
+            await fetch(`${API_URL}?${queryParams.toString()}`, {
+                method: "GET",
+                redirect: "follow"
+            });
 
-        mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
-        btn.disabled = false;
-        btn.textContent = "☁ Guardar Reserva";
+            document.getElementById('cboHoraInicio').value = '';
+            document.getElementById('cboHoraFin').value = '';
+            document.getElementById('txtNombre').value = '';
 
-        // Re-sincronizar de inmediato
-        setTimeout(consultarDisponibilidadNube, 1500);
-        setTimeout(consultarDisponibilidadNube, 3000);
+            mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
+            
+            // Recargar datos directamente de Google Drive
+            await consultarDisponibilidadNube();
+
+        } catch (e) {
+            mostrarMensaje("Error al conectar con Google Sheets.", "error");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "☁ Guardar Reserva";
+        }
     }
 
-    async function eliminarReserva(claveFecha, cancha, horaInicio, nombre) {
-        const fechaVisual = formatearFechaVisual(claveFecha);
-        const hora12H = aFormato12H(horaInicio);
-        
-        if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fechaVisual} a las ${hora12H})?`)) return;
+    async function eliminarReserva(fecha, cancha, horaInicio, nombre) {
+        const hora12H = a12H(horaInicio);
+        if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fecha} a las ${hora12H})?`)) return;
 
-        enviarDatosNube({
+        const queryParams = new URLSearchParams({
             accion: "eliminar",
-            Fecha: fechaVisual,
+            Fecha: fecha,
             Cancha: cancha,
-            HoraInicio: aFormato24H(horaInicio),
-            _t: Date.now()
+            HoraInicio: a24H(horaInicio),
+            _nocache: Date.now()
         });
 
-        mostrarMensaje("Reserva cancelada con éxito.", "ok");
-        setTimeout(consultarDisponibilidadNube, 1500);
-        setTimeout(consultarDisponibilidadNube, 3000);
+        try {
+            await fetch(`${API_URL}?${queryParams.toString()}`, {
+                method: "GET",
+                redirect: "follow"
+            });
+            mostrarMensaje("Reserva cancelada con éxito.", "ok");
+            await consultarDisponibilidadNube();
+        } catch (e) {
+            mostrarMensaje("Error al cancelar la reserva.", "error");
+        }
     }
 
+    // EXPORTACIÓN A EXCEL EN 3 HOJAS
     function descargarReporteExcel() {
         if (reservasNube.length === 0) {
             mostrarMensaje("⚠️ No hay reservas registradas para exportar.", "error");
@@ -784,8 +765,8 @@
         const horaEmision = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
 
         const ordenadas = [...reservasNube].sort((a, b) => {
-            const fA = a.ClaveFecha + a.Cancha + aFormato24H(a.HoraInicio);
-            const fB = b.ClaveFecha + b.Cancha + aFormato24H(b.HoraInicio);
+            const fA = a.Fecha + a.Cancha + a.HoraInicio;
+            const fB = b.Fecha + b.Cancha + b.HoraInicio;
             return fA.localeCompare(fB);
         });
 
@@ -816,8 +797,7 @@
                 hojaEjecutiva.push(["-", "Sin registros", "-", "-", "Sin reservas programadas"]);
             } else {
                 resCancha.forEach((r, idx) => {
-                    const horario12 = `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`;
-                    hojaEjecutiva.push([idx + 1, r.Fecha, horario12, r.Nombre, r.Estado || "Confirmada"]);
+                    hojaEjecutiva.push([idx + 1, r.Fecha, r.Horario, r.Nombre, r.Estado]);
                 });
             }
         });
@@ -825,7 +805,7 @@
         const wsEjecutivo = XLSX.utils.aoa_to_sheet(hojaEjecutiva);
         wsEjecutivo['!cols'] = [{ wch: 6 }, { wch: 16 }, { wch: 24 }, { wch: 32 }, { wch: 22 }];
 
-        // HOJA 2: CRONOGRAMA MAESTRO GENERAL
+        // HOJA 2: CRONOGRAMA MAESTRO
         const hojaCronograma = [
             ["CRONOGRAMA GENERAL CONSOLIDADO - TODAS LAS SEDES"],
             [`Actualizado al: ${fechaEmision} ${horaEmision}`],
@@ -838,11 +818,11 @@
                 idx + 1,
                 r.Fecha,
                 r.Cancha,
-                aFormato12H(aFormato24H(r.HoraInicio)),
-                aFormato12H(aFormato24H(r.HoraFin)),
-                `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`,
+                a12H(r.HoraInicio),
+                a12H(r.HoraFin),
+                r.Horario,
                 r.Nombre,
-                r.Estado || "Confirmada"
+                r.Estado
             ]);
         });
 
@@ -854,11 +834,11 @@
             "Item": i + 1,
             "Fecha": r.Fecha,
             "Cancha": r.Cancha,
-            "Hora_Inicio_12H": aFormato12H(aFormato24H(r.HoraInicio)),
-            "Hora_Fin_12H": aFormato12H(aFormato24H(r.HoraFin)),
-            "Horario_Completo": `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`,
+            "Hora_Inicio_12H": a12H(r.HoraInicio),
+            "Hora_Fin_12H": a12H(r.HoraFin),
+            "Horario_Completo": r.Horario,
             "Cliente": r.Nombre,
-            "Estado": r.Estado || "Confirmada"
+            "Estado": r.Estado
         })));
         wsBaseDatos['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 28 }, { wch: 14 }];
 
@@ -875,7 +855,7 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización continua cada 4 segundos
+    // Sincronización automática periódica cada 4 segundos
     setInterval(consultarDisponibilidadNube, 4000);
 </script>
 

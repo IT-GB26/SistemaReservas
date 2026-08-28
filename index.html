@@ -259,7 +259,7 @@
             background: #dc2626;
         }
 
-        /* Modal Alerta Universal */
+        /* Modal Alerta */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -371,7 +371,7 @@
 
             <div class="btn-group">
                 <button class="btn btn-primary" id="btnGuardar" onclick="guardarEnGoogleDrive()">☁ Guardar Reserva</button>
-                <button class="btn btn-success" onclick="descargarReporteExcel()">📥 Descargar Reporte en Excel (.xlsx)</button>
+                <button class="btn btn-success" onclick="descargarReporteExcel()">📥 Descargar Reporte Ejecutivo (.xlsx)</button>
             </div>
         </div>
     </div>
@@ -383,12 +383,12 @@
             <button onclick="consultarDisponibilidadNube()">🔄 Actualizar</button>
         </div>
         <div class="grid-canchas" id="contenedorMultiCancha">
-            <!-- Columnas independientes -->
+            <!-- Columnas generadas dinámicamente -->
         </div>
     </div>
 </div>
 
-<!-- Modal Emergente Universal -->
+<!-- Modal Emergente -->
 <div class="modal-overlay" id="modalConflicto">
     <div class="modal-box">
         <h3>⛔ HORARIO YA RESERVADO</h3>
@@ -397,7 +397,7 @@
     </div>
 </div>
 
-<!-- Formulario Invisible y seguro para garantizar escritura en Google Drive desde teléfonos -->
+<!-- Formulario oculto de envío seguro -->
 <iframe name="iframe_oculto" id="iframe_oculto" style="display:none;"></iframe>
 <form id="form_envio_nube" method="GET" target="iframe_oculto" style="display:none;"></form>
 
@@ -665,7 +665,6 @@
         }
     }
 
-    // ENVÍO MEDIANTE FORMULARIO DIRECTO AL SERVIDOR (INMUNIDAD TOTAL CONTRA BLOQUEOS MÓVILES)
     function enviarDatosNube(objetoParametros) {
         const form = document.getElementById('form_envio_nube');
         form.action = API_URL;
@@ -713,7 +712,6 @@
         btn.disabled = true;
         btn.textContent = "⏳ Guardando en Google Drive...";
 
-        // Escritura física en Google Sheets
         enviarDatosNube({
             accion: "guardar",
             Fecha: fechaVisual,
@@ -733,7 +731,6 @@
         btn.disabled = false;
         btn.textContent = "☁ Guardar Reserva";
 
-        // Re-sincronizar de inmediato
         setTimeout(consultarDisponibilidadNube, 1500);
         setTimeout(consultarDisponibilidadNube, 3500);
     }
@@ -757,57 +754,137 @@
         setTimeout(consultarDisponibilidadNube, 3500);
     }
 
+    // ==========================================
+    // REPORTE EXCEL MEJORADO Y PROFESIONAL
+    // ==========================================
     function descargarReporteExcel() {
         if (reservasNube.length === 0) {
-            mostrarMensaje("No hay datos para exportar.", "error");
+            mostrarMensaje("⚠️ No hay reservas registradas para exportar.", "error");
             return;
         }
 
+        const ahora = new Date();
+        const fechaEmision = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const horaEmision = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+        // Ordenar cronológicamente
         const ordenadas = [...reservasNube].sort((a, b) => {
             const fA = a.ClaveFecha + a.Cancha + aFormato24H(a.HoraInicio);
             const fB = b.ClaveFecha + b.Cancha + aFormato24H(b.HoraInicio);
             return fA.localeCompare(fB);
         });
 
-        const reporteData = [["REPORTE GENERAL DE RESERVAS POR SEDE"], []];
-        const canchasUnicas = [...new Set(ordenadas.map(r => r.Cancha))];
+        // ---------------------------------------------------------
+        // HOJA 1: REPORTE EJECUTIVO POR CANCHA CON KPIs
+        // ---------------------------------------------------------
+        const hojaEjecutiva = [
+            ["SISTEMA DE GESTIÓN Y RESERVA DE CANCHAS DEPORTIVAS"],
+            ["REPORTE EJECUTIVO CONSOLIDADO"],
+            [`Emitido el: ${fechaEmision} a las ${horaEmision}`, "", "", "", `Total Reservas Activas: ${ordenadas.length}`],
+            [],
+            ["RESUMEN POR SEDE / CANCHA"],
+            ["Cancha / Espacio Deportivo", "Total Reservas", "Estado del Espacio"]
+        ];
 
-        canchasUnicas.forEach(c => {
-            reporteData.push([`🏟️ CANCHA: ${c}`]);
-            reporteData.push(["Fecha", "Horario (12H)", "Cliente", "Estado"]);
-            
-            ordenadas.filter(r => r.Cancha === c).forEach(r => {
-                const h12 = `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`;
-                reporteData.push([r.Fecha, h12, r.Nombre, r.Estado || "Confirmada"]);
-            });
-            reporteData.push([]);
+        canchasDisponibles.forEach(c => {
+            const cant = ordenadas.filter(r => r.Cancha === c).length;
+            hojaEjecutiva.push([c, cant, cant > 0 ? "Activo con Reservas" : "Disponible (Sin reservas)"]);
         });
 
-        const wsRep = XLSX.utils.aoa_to_sheet(reporteData);
-        wsRep['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 28 }, { wch: 14 }];
+        hojaEjecutiva.push([], ["DETALLE AGRUPADO POR CANCHA"]);
 
-        const wsBD = XLSX.utils.json_to_sheet(ordenadas.map(r => ({
+        canchasDisponibles.forEach(cancha => {
+            const resCancha = ordenadas.filter(r => r.Cancha === cancha);
+            hojaEjecutiva.push([]);
+            hojaEjecutiva.push([`🏟️ ESPACIO: ${cancha.toUpperCase()} (${resCancha.length} Reservas Registradas)`]);
+            hojaEjecutiva.push(["#", "Fecha", "Horario (12 Horas)", "Cliente Titular", "Estado de la Reserva"]);
+
+            if (resCancha.length === 0) {
+                hojaEjecutiva.push(["-", "Sin registros", "-", "-", "Sin reservas programadas"]);
+            } else {
+                resCancha.forEach((r, idx) => {
+                    const horario12 = `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`;
+                    hojaEjecutiva.push([idx + 1, r.Fecha, horario12, r.Nombre, r.Estado || "Confirmada"]);
+                });
+            }
+        });
+
+        const wsEjecutivo = XLSX.utils.aoa_to_sheet(hojaEjecutiva);
+        wsEjecutivo['!cols'] = [
+            { wch: 6 },   // #
+            { wch: 16 },  // Fecha
+            { wch: 24 },  // Horario
+            { wch: 32 },  // Cliente
+            { wch: 22 }   // Estado
+        ];
+
+        // ---------------------------------------------------------
+        // HOJA 2: CRONOGRAMA MAESTRO GENERAL
+        // ---------------------------------------------------------
+        const hojaCronograma = [
+            ["CRONOGRAMA GENERAL CONSOLIDADO - TODAS LAS SEDES"],
+            [`Actualizado al: ${fechaEmision} ${horaEmision}`],
+            [],
+            ["ID", "Fecha", "Cancha / Sede", "Hora Inicio", "Hora Fin", "Horario Completo", "Cliente Titular", "Estado"]
+        ];
+
+        ordenadas.forEach((r, idx) => {
+            hojaCronograma.push([
+                idx + 1,
+                r.Fecha,
+                r.Cancha,
+                aFormato12H(aFormato24H(r.HoraInicio)),
+                aFormato12H(aFormato24H(r.HoraFin)),
+                `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`,
+                r.Nombre,
+                r.Estado || "Confirmada"
+            ]);
+        });
+
+        const wsCronograma = XLSX.utils.aoa_to_sheet(hojaCronograma);
+        wsCronograma['!cols'] = [
+            { wch: 6 },   // ID
+            { wch: 14 },  // Fecha
+            { wch: 26 },  // Cancha
+            { wch: 14 },  // Hora Inicio
+            { wch: 14 },  // Hora Fin
+            { wch: 22 },  // Horario Completo
+            { wch: 30 },  // Cliente
+            { wch: 16 }   // Estado
+        ];
+
+        // ---------------------------------------------------------
+        // HOJA 3: BASE DE DATOS PLANA (Para Tablas Dinámicas)
+        // ---------------------------------------------------------
+        const wsBaseDatos = XLSX.utils.json_to_sheet(ordenadas.map((r, i) => ({
+            "Item": i + 1,
             "Fecha": r.Fecha,
-            "Hora Inicio": aFormato12H(aFormato24H(r.HoraInicio)),
-            "Hora Fin": aFormato12H(aFormato24H(r.HoraFin)),
-            "Horario": `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`,
-            "Nombre": r.Nombre,
             "Cancha": r.Cancha,
+            "Hora_Inicio_12H": aFormato12H(aFormato24H(r.HoraInicio)),
+            "Hora_Fin_12H": aFormato12H(aFormato24H(r.HoraFin)),
+            "Horario_Completo": `${aFormato12H(aFormato24H(r.HoraInicio))} a ${aFormato12H(aFormato24H(r.HoraFin))}`,
+            "Cliente": r.Nombre,
             "Estado": r.Estado || "Confirmada"
         })));
+        wsBaseDatos['!cols'] = [
+            { wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 28 }, { wch: 14 }
+        ];
 
+        // Construir el libro con las 3 pestañas
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, wsRep, "Reporte_Sedes");
-        XLSX.utils.book_append_sheet(wb, wsBD, "BaseDatos");
+        XLSX.utils.book_append_sheet(wb, wsEjecutivo, "Reporte_Ejecutivo");
+        XLSX.utils.book_append_sheet(wb, wsCronograma, "Cronograma_Maestro");
+        XLSX.utils.book_append_sheet(wb, wsBaseDatos, "BaseDatos_Auditoria");
 
-        XLSX.writeFile(wb, "Reporte_Reservas_MultiSede.xlsx");
-        mostrarMensaje("Archivo Excel descargado exitosamente.", "ok");
+        const nombreArchivo = `Reporte_Reservas_${fechaEmision.replace(/\//g, '-')}.xlsx`;
+        XLSX.writeFile(wb, nombreArchivo);
+        mostrarMensaje(`📥 Archivo descargado con éxito: <strong>${nombreArchivo}</strong>`, "ok");
     }
 
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización automática periódica cada 6 segundos
+    // Sincronización automática continua cada 6 segundos
     setInterval(consultarDisponibilidadNube, 6000);
 </script>
 

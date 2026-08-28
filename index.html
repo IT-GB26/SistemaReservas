@@ -412,7 +412,7 @@
 
     const inputFecha = document.getElementById('txtFecha');
 
-    // 1. FECHA LOCAL CORREGIDA
+    // FECHA LOCAL SIN DESFASE UTC
     function obtenerFechaLocalISO(d = new Date()) {
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -565,7 +565,7 @@
         box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    // 2. LECTURA INFALIBLE MEDIANTE JSONP (0 Bloqueos de CORS)
+    // LECTURA DINÁMICA ANTI-CACHÉ EN CUALQUIER DISPOSITIVO
     function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
         lbl.textContent = "⏳ Sincronizando con Google Drive...";
@@ -574,7 +574,6 @@
         const oldScript = document.getElementById(scriptId);
         if (oldScript) oldScript.remove();
 
-        // Callback global único
         window.recibirDatosNube = function(data) {
             if (Array.isArray(data)) {
                 reservasNube = data.map(r => {
@@ -599,11 +598,8 @@
 
         const script = document.createElement('script');
         script.id = scriptId;
-        script.src = `${API_URL}?callback=recibirDatosNube&nocache=${new Date().getTime()}`;
-        script.onerror = function() {
-            lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} en memoria)`;
-            renderizarTablasMultiCancha();
-        };
+        // Se añade un valor aleatorio de tiempo para que ningún navegador use copia guardada
+        script.src = `${API_URL}?callback=recibirDatosNube&_t=${Date.now()}`;
         document.body.appendChild(script);
     }
 
@@ -691,6 +687,7 @@
         }
     }
 
+    // ENVÍO DE DATOS A GOOGLE SHEETS
     async function guardarEnGoogleDrive() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
         const fechaVisual = formatearFechaVisual(claveFecha);
@@ -722,7 +719,6 @@
         const horario12H = `${aFormato12H(horaInicio)} a ${aFormato12H(horaFin)}`;
 
         const nuevaReserva = {
-            ClaveFecha: claveFecha,
             Fecha: fechaVisual,
             HoraInicio: aFormato12H(horaInicio),
             HoraFin: aFormato12H(horaFin),
@@ -733,29 +729,14 @@
         };
 
         btn.disabled = true;
-        btn.textContent = "Guardando...";
+        btn.textContent = "Guardando en Drive...";
 
         try {
             await fetch(API_URL, {
                 method: "POST",
                 mode: "no-cors",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(nuevaReserva)
             });
-
-            // Actualización visual local inmediata
-            reservasNube.push({
-                ClaveFecha: claveFecha,
-                Fecha: fechaVisual,
-                HoraInicio: horaInicio,
-                HoraFin: horaFin,
-                Horario: horario12H,
-                Nombre: nombre,
-                Cancha: cancha,
-                Estado: "Confirmada"
-            });
-
-            renderizarTablasMultiCancha();
 
             document.getElementById('cboHoraInicio').value = '';
             document.getElementById('cboHoraFin').value = '';
@@ -763,9 +744,10 @@
 
             mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
             
+            // Reconsultar la nube tras guardar para actualizar todos los dispositivos
             setTimeout(() => {
                 consultarDisponibilidadNube();
-            }, 1200);
+            }, 1500);
 
         } catch (e) {
             mostrarMensaje("Error al enviar a Google Sheets.", "error");
@@ -788,27 +770,18 @@
             HoraInicio: aFormato24H(horaInicio)
         };
 
-        // Eliminación visual inmediata
-        reservasNube = reservasNube.filter(r => !(
-            (r.ClaveFecha === claveFecha || normalizarAClaveFecha(r.Fecha) === claveFecha) && 
-            r.Cancha.toUpperCase() === cancha.toUpperCase() && 
-            aFormato24H(r.HoraInicio) === aFormato24H(horaInicio)
-        ));
-        renderizarTablasMultiCancha();
-
         try {
             await fetch(API_URL, {
                 method: "POST",
                 mode: "no-cors",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload)
             });
 
-            mostrarMensaje("Cancelando reserva...", "ok");
+            mostrarMensaje("Cancelando reserva en Drive...", "ok");
             setTimeout(() => {
                 consultarDisponibilidadNube();
                 mostrarMensaje("Reserva cancelada con éxito.", "ok");
-            }, 1200);
+            }, 1500);
         } catch (e) {
             mostrarMensaje("Error al cancelar la reserva.", "error");
         }
@@ -866,8 +839,8 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización automática periódica en segundo plano
-    setInterval(consultarDisponibilidadNube, 15000);
+    // Auto-actualización automática en segundo plano cada 10 segundos
+    setInterval(consultarDisponibilidadNube, 10000);
 </script>
 
 </body>

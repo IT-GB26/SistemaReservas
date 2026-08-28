@@ -396,7 +396,7 @@
 </div>
 
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbxxs_skL40ncgz0DsPivFF9Sy25mFkicIpHvtwon5h8Rqr8q5SpHC5lymz33CHQ40npEg/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxyFIOlamSycc9-YTXLLi1uvHQw9dNsRpeNMvELuBoDnPVNZogcAwEVYG0Gs9TUxhUzGg/exec";
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
@@ -419,10 +419,10 @@
 
     inputFecha.value = obtenerFechaLocalISO();
 
-    // Normalizador de fecha universal (Siempre devuelve YYYY-MM-DD)
+    // Normaliza cualquier formato de fecha a 'YYYY-MM-DD'
     function normalizarFecha(str) {
         if (!str) return "";
-        let s = str.toString().trim();
+        let s = str.toString().trim().replace(/^'/, "");
         if (s.includes("T")) s = s.split("T")[0];
         
         if (s.includes("/")) {
@@ -447,7 +447,7 @@
     // Convierte cualquier formato horario a minutos del día (0 - 1440)
     function aMinutos(horaStr) {
         if (!horaStr) return 0;
-        let s = horaStr.toString().trim().toUpperCase();
+        let s = horaStr.toString().trim().toUpperCase().replace(/^'/, "");
         let esPM = s.includes("PM");
         let esAM = s.includes("AM");
         s = s.replace("AM", "").replace("PM", "").trim();
@@ -564,12 +564,12 @@
                     MinInicio: aMinutos(r.HoraInicio),
                     MinFin: aMinutos(r.HoraFin),
                     Horario: `${a12H(r.HoraInicio)} a ${a12H(r.HoraFin)}`,
-                    Nombre: (r.Nombre || "").trim(),
-                    Cancha: (r.Cancha || "").trim(),
-                    Estado: (r.Estado || "Confirmada").trim()
+                    Nombre: (r.Nombre || "").replace(/^'/, "").trim(),
+                    Cancha: (r.Cancha || "").replace(/^'/, "").trim(),
+                    Estado: (r.Estado || "Confirmada").replace(/^'/, "").trim()
                 }));
 
-                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
+                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas registradas)`;
             }
         } catch (e) {
             lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas)`;
@@ -855,8 +855,8 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización automática periódica cada 4 segundos
-    setInterval(consultarDisponibilidadNube, 4000);
+    // Sincronización continua cada 3 segundos
+    setInterval(consultarDisponibilidadNube, 3000);
 </script>
 
 </body>

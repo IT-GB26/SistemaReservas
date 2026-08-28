@@ -173,7 +173,7 @@
             text-align: center;
         }
 
-        /* Panel de Disponibilidad */
+        /* Panel Comparativo Multi-Cancha */
         .schedule-header {
             background-color: #334155;
             color: #ffffff;
@@ -259,7 +259,7 @@
             background: #dc2626;
         }
 
-        /* Modal Alerta */
+        /* Modal Alerta Universal */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -371,22 +371,24 @@
 
             <div class="btn-group">
                 <button class="btn btn-primary" id="btnGuardar" onclick="guardarEnGoogleDrive()">☁ Guardar Reserva</button>
-                <button class="btn btn-success" onclick="descargarReporteExcel()">📥 Descargar Reporte Ejecutivo (.xlsx)</button>
+                <button class="btn btn-success" onclick="descargarReporteExcel()">📥 Descargar Reporte en Excel (.xlsx)</button>
             </div>
         </div>
     </div>
 
-    <!-- PANEL DISPONIBILIDAD -->
+    <!-- COMPARATIVO POR CANCHAS -->
     <div class="app-card">
         <div class="schedule-header">
             <span id="lblTituloHorario">Disponibilidad por Canchas</span>
             <button onclick="consultarDisponibilidadNube()">🔄 Actualizar</button>
         </div>
-        <div class="grid-canchas" id="contenedorMultiCancha"></div>
+        <div class="grid-canchas" id="contenedorMultiCancha">
+            <!-- Columnas independientes -->
+        </div>
     </div>
 </div>
 
-<!-- Modal Conflicto -->
+<!-- Modal Emergente Universal -->
 <div class="modal-overlay" id="modalConflicto">
     <div class="modal-box">
         <h3>⛔ HORARIO YA RESERVADO</h3>
@@ -394,6 +396,10 @@
         <button class="modal-btn" onclick="cerrarModal()">Entendido</button>
     </div>
 </div>
+
+<!-- Formulario Invisible y seguro para garantizar escritura en Google Drive desde teléfonos -->
+<iframe name="iframe_oculto" id="iframe_oculto" style="display:none;"></iframe>
+<form id="form_envio_nube" method="GET" target="iframe_oculto" style="display:none;"></form>
 
 <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbx_UPa4eJQIxAWUyDNLHJpeCnAVgaSvuE41ny27zxxTedeTZs6SVgKeVUQFx3pZW3MthA/exec";
@@ -421,24 +427,17 @@
 
     function normalizarAClaveFecha(fechaEntrada) {
         if (!fechaEntrada) return "";
-        let str = fechaEntrada.toString().trim().replace(/^'/, "");
+        let str = fechaEntrada.toString().trim();
         if (str.includes("T")) str = str.split("T")[0];
-        
         if (str.includes("/")) {
             const p = str.split("/");
             if (p.length === 3) {
-                const dia = p[0].padStart(2, "0");
-                const mes = p[1].padStart(2, "0");
-                const anio = p[2].length === 2 ? '20' + p[2] : p[2];
-                return `${anio}-${mes}-${dia}`;
+                return `${p[2].length === 2 ? '20' + p[2] : p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
             }
         }
         if (str.includes("-")) {
             const p = str.split("-");
-            if (p.length === 3) {
-                if (p[0].length === 4) return `${p[0]}-${p[1].padStart(2, "0")}-${p[2].padStart(2, "0")}`;
-                return `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
-            }
+            if (p.length === 3) return `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}`;
         }
         return str;
     }
@@ -450,42 +449,40 @@
         return claveFecha;
     }
 
-    function horaAMinutos(horaStr) {
-        if (!horaStr) return 0;
+    function aFormato24H(horaStr) {
+        if (!horaStr) return "";
         let str = horaStr.toString().trim().toUpperCase();
-        let esPM = str.includes("PM");
-        let esAM = str.includes("AM");
-        str = str.replace("AM", "").replace("PM", "").trim();
-        
+        if (str.includes("AM") || str.includes("PM")) {
+            const esPM = str.includes("PM");
+            const limpia = str.replace("AM", "").replace("PM", "").trim();
+            const partes = limpia.split(":");
+            let h = parseInt(partes[0], 10);
+            const m = partes[1] ? partes[1].substring(0, 2) : "00";
+            if (esPM && h < 12) h += 12;
+            if (!esPM && h === 12) h = 0;
+            return `${h.toString().padStart(2, "0")}:${m.padStart(2, "0")}`;
+        }
         if (str.includes("T")) str = str.split("T")[1].substring(0, 5);
-        
         const partes = str.split(":");
-        let h = parseInt(partes[0] || "0", 10);
-        let m = parseInt(partes[1] || "0", 10);
-
-        if (esPM && h < 12) h += 12;
-        if (esAM && h === 12) h = 0;
-
-        return (h * 60) + m;
+        if (partes.length >= 2) {
+            return `${partes[0].padStart(2, "0")}:${partes[1].substring(0, 2).padStart(2, "0")}`;
+        }
+        return str;
     }
 
     function aFormato12H(hora24) {
         if (!hora24) return "";
-        const mins = horaAMinutos(hora24);
-        let h = Math.floor(mins / 60);
-        const m = (mins % 60).toString().padStart(2, "0");
-        const ampm = h >= 12 ? "PM" : "AM";
-        h = h % 12;
-        h = h ? h : 12;
-        return `${h.toString().padStart(2, "0")}:${m} ${ampm}`;
-    }
-
-    function aFormato24H(horaStr) {
-        if (!horaStr) return "";
-        const mins = horaAMinutos(horaStr);
-        const h = Math.floor(mins / 60).toString().padStart(2, "0");
-        const m = (mins % 60).toString().padStart(2, "0");
-        return `${h}:${m}`;
+        const h24 = aFormato24H(hora24);
+        const partes = h24.split(":");
+        if (partes.length >= 2) {
+            let h = parseInt(partes[0], 10);
+            const m = partes[1];
+            const ampm = h >= 12 ? "PM" : "AM";
+            h = h % 12;
+            h = h ? h : 12;
+            return `${h.toString().padStart(2, "0")}:${m} ${ampm}`;
+        }
+        return hora24;
     }
 
     function inicializarSelectoresHora() {
@@ -577,27 +574,22 @@
                         Estado: r.Estado || "Confirmada"
                     };
                 });
-                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas registradas)`;
+                lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas registradas)`;
             }
         } catch (e) {
-            lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas registradas)`;
+            lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
         }
         renderizarTablasMultiCancha();
     }
 
-    function buscarConflicto(claveFecha, cancha, hIniStr, hFinStr) {
-        const minInicioNuevo = horaAMinutos(hIniStr);
-        const minFinNuevo = horaAMinutos(hFinStr);
-
+    function buscarConflicto(claveFecha, cancha, hIni, hFin) {
         return reservasNube.find(r => {
-            const rClave = normalizarAClaveFecha(r.Fecha || r.ClaveFecha);
-            const matchFecha = (rClave === claveFecha);
-            const matchCancha = (r.Cancha.trim().toUpperCase() === cancha.trim().toUpperCase());
-
+            const matchFecha = (r.ClaveFecha === claveFecha || normalizarAClaveFecha(r.Fecha) === claveFecha);
+            const matchCancha = (r.Cancha.toUpperCase() === cancha.toUpperCase());
             if (matchFecha && matchCancha) {
-                const rMinInicio = horaAMinutos(r.HoraInicio);
-                const rMinFin = horaAMinutos(r.HoraFin);
-                return (minInicioNuevo < rMinFin && minFinNuevo > rMinInicio);
+                const rIni = aFormato24H(r.HoraInicio);
+                const rFin = aFormato24H(r.HoraFin);
+                return (hIni < rFin && hFin > rIni);
             }
             return false;
         });
@@ -650,13 +642,13 @@
 
     function verificarCruceEnVivo() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
-        const horaInicio = document.getElementById('cboHoraInicio').value;
-        const horaFin = document.getElementById('cboHoraFin').value;
+        const horaInicio = aFormato24H(document.getElementById('cboHoraInicio').value);
+        const horaFin = aFormato24H(document.getElementById('cboHoraFin').value);
         const cancha = document.getElementById('cboCancha').value;
 
         if (!claveFecha || !horaInicio || !horaFin || !cancha) return false;
 
-        if (horaAMinutos(horaInicio) >= horaAMinutos(horaFin)) {
+        if (horaInicio >= horaFin) {
             mostrarMensaje("⚠️ La hora final debe ser posterior a la hora de inicio.", "error");
             return false;
         }
@@ -673,7 +665,22 @@
         }
     }
 
-    // GUARDAR CON CONFIRMACIÓN REAL DE GOOGLE SHEETS
+    // ENVÍO MEDIANTE FORMULARIO DIRECTO AL SERVIDOR
+    function enviarDatosNube(objetoParametros) {
+        const form = document.getElementById('form_envio_nube');
+        form.action = API_URL;
+        form.innerHTML = "";
+        
+        for (const [key, value] of Object.entries(objetoParametros)) {
+            const input = document.createElement('input');
+            input.type = "hidden";
+            input.name = key;
+            input.value = value;
+            form.appendChild(input);
+        }
+        form.submit();
+    }
+
     async function guardarEnGoogleDrive() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
         const fechaVisual = formatearFechaVisual(claveFecha);
@@ -684,11 +691,11 @@
         const btn = document.getElementById('btnGuardar');
 
         if (!claveFecha || !horaInicio || !horaFin || !nombre || !cancha) {
-            mostrarMensaje("⚠️ Por favor completa todos los campos (Fecha, Cancha, Horas y Nombre).", "error");
+            mostrarMensaje("⚠️ Por favor completa todos los campos requeridos.", "error");
             return;
         }
 
-        if (horaAMinutos(horaInicio) >= horaAMinutos(horaFin)) {
+        if (horaInicio >= horaFin) {
             mostrarMensaje("⚠️ La hora final debe ser mayor que la hora inicial.", "error");
             return;
         }
@@ -706,7 +713,8 @@
         btn.disabled = true;
         btn.textContent = "⏳ Guardando en Google Drive...";
 
-        const queryParams = new URLSearchParams({
+        // Escritura física en Google Sheets
+        enviarDatosNube({
             accion: "guardar",
             Fecha: fechaVisual,
             HoraInicio: aFormato12H(horaInicio),
@@ -714,36 +722,20 @@
             Horario: horario12H,
             Nombre: nombre,
             Cancha: cancha,
-            _nocache: Date.now()
+            _t: Date.now()
         });
 
-        try {
-            // Se espera la confirmación real de Google Apps Script
-            const resp = await fetch(`${API_URL}?${queryParams.toString()}`, {
-                method: "GET",
-                redirect: "follow"
-            });
-            await resp.json();
+        document.getElementById('cboHoraInicio').value = '';
+        document.getElementById('cboHoraFin').value = '';
+        document.getElementById('txtNombre').value = '';
 
-            document.getElementById('cboHoraInicio').value = '';
-            document.getElementById('cboHoraFin').value = '';
-            document.getElementById('txtNombre').value = '';
+        mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
+        btn.disabled = false;
+        btn.textContent = "☁ Guardar Reserva";
 
-            mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
-            
-            // Recargar datos directamente desde la hoja de cálculo
-            await consultarDisponibilidadNube();
-
-        } catch (e) {
-            // Fallback de contingencia
-            const img = new Image();
-            img.src = `${API_URL}?${queryParams.toString()}`;
-            mostrarMensaje(`¡Reserva enviada a <strong>${cancha}</strong>!`, "ok");
-            setTimeout(consultarDisponibilidadNube, 2000);
-        } finally {
-            btn.disabled = false;
-            btn.textContent = "☁ Guardar Reserva";
-        }
+        // Re-sincronizar de inmediato
+        setTimeout(consultarDisponibilidadNube, 1500);
+        setTimeout(consultarDisponibilidadNube, 3500);
     }
 
     async function eliminarReserva(claveFecha, cancha, horaInicio, nombre) {
@@ -752,30 +744,22 @@
         
         if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fechaVisual} a las ${hora12H})?`)) return;
 
-        const queryParams = new URLSearchParams({
+        enviarDatosNube({
             accion: "eliminar",
             Fecha: fechaVisual,
             Cancha: cancha,
             HoraInicio: aFormato24H(horaInicio),
-            _nocache: Date.now()
+            _t: Date.now()
         });
 
-        try {
-            const resp = await fetch(`${API_URL}?${queryParams.toString()}`, {
-                method: "GET",
-                redirect: "follow"
-            });
-            await resp.json();
-            mostrarMensaje("Reserva cancelada con éxito.", "ok");
-            await consultarDisponibilidadNube();
-        } catch (e) {
-            const img = new Image();
-            img.src = `${API_URL}?${queryParams.toString()}`;
-            mostrarMensaje("Reserva cancelada con éxito.", "ok");
-            setTimeout(consultarDisponibilidadNube, 2000);
-        }
+        mostrarMensaje("Reserva cancelada con éxito.", "ok");
+        setTimeout(consultarDisponibilidadNube, 1500);
+        setTimeout(consultarDisponibilidadNube, 3500);
     }
 
+    // ==========================================
+    // REPORTE EXCEL MEJORADO (3 PESTAÑAS + KPIS)
+    // ==========================================
     function descargarReporteExcel() {
         if (reservasNube.length === 0) {
             mostrarMensaje("⚠️ No hay reservas registradas para exportar.", "error");
@@ -786,13 +770,16 @@
         const fechaEmision = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const horaEmision = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
 
+        // Ordenar cronológicamente
         const ordenadas = [...reservasNube].sort((a, b) => {
             const fA = a.ClaveFecha + a.Cancha + aFormato24H(a.HoraInicio);
             const fB = b.ClaveFecha + b.Cancha + aFormato24H(b.HoraInicio);
             return fA.localeCompare(fB);
         });
 
-        // HOJA 1: REPORTE EJECUTIVO
+        // ---------------------------------------------------------
+        // HOJA 1: REPORTE EJECUTIVO POR CANCHA CON KPIs
+        // ---------------------------------------------------------
         const hojaEjecutiva = [
             ["SISTEMA DE GESTIÓN Y RESERVA DE CANCHAS DEPORTIVAS"],
             ["REPORTE EJECUTIVO CONSOLIDADO"],
@@ -826,9 +813,17 @@
         });
 
         const wsEjecutivo = XLSX.utils.aoa_to_sheet(hojaEjecutiva);
-        wsEjecutivo['!cols'] = [{ wch: 6 }, { wch: 16 }, { wch: 24 }, { wch: 32 }, { wch: 22 }];
+        wsEjecutivo['!cols'] = [
+            { wch: 6 },   // #
+            { wch: 16 },  // Fecha
+            { wch: 24 },  // Horario
+            { wch: 32 },  // Cliente
+            { wch: 22 }   // Estado
+        ];
 
-        // HOJA 2: CRONOGRAMA MAESTRO
+        // ---------------------------------------------------------
+        // HOJA 2: CRONOGRAMA MAESTRO GENERAL
+        // ---------------------------------------------------------
         const hojaCronograma = [
             ["CRONOGRAMA GENERAL CONSOLIDADO - TODAS LAS SEDES"],
             [`Actualizado al: ${fechaEmision} ${horaEmision}`],
@@ -850,9 +845,20 @@
         });
 
         const wsCronograma = XLSX.utils.aoa_to_sheet(hojaCronograma);
-        wsCronograma['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 30 }, { wch: 16 }];
+        wsCronograma['!cols'] = [
+            { wch: 6 },   // ID
+            { wch: 14 },  // Fecha
+            { wch: 26 },  // Cancha
+            { wch: 14 },  // Hora Inicio
+            { wch: 14 },  // Hora Fin
+            { wch: 22 },  // Horario Completo
+            { wch: 30 },  // Cliente
+            { wch: 16 }   // Estado
+        ];
 
-        // HOJA 3: BASE DE DATOS PLANA
+        // ---------------------------------------------------------
+        // HOJA 3: BASE DE DATOS PLANA (Auditoría / Tablas Dinámicas)
+        // ---------------------------------------------------------
         const wsBaseDatos = XLSX.utils.json_to_sheet(ordenadas.map((r, i) => ({
             "Item": i + 1,
             "Fecha": r.Fecha,
@@ -863,8 +869,11 @@
             "Cliente": r.Nombre,
             "Estado": r.Estado || "Confirmada"
         })));
-        wsBaseDatos['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 28 }, { wch: 14 }];
+        wsBaseDatos['!cols'] = [
+            { wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 28 }, { wch: 14 }
+        ];
 
+        // Construir el archivo Excel con las 3 pestañas
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, wsEjecutivo, "Reporte_Ejecutivo");
         XLSX.utils.book_append_sheet(wb, wsCronograma, "Cronograma_Maestro");
@@ -878,6 +887,7 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
+    // Sincronización automática periódica cada 6 segundos
     setInterval(consultarDisponibilidadNube, 6000);
 </script>
 

@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Reservas - Canchas y Piscina</title>
-    <!-- SheetJS para exportar a Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- SheetJS CDN Estable -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -421,7 +421,7 @@
 
             <div class="btn-group">
                 <button class="btn btn-primary" id="btnGuardar" onclick="guardarEnGoogleDrive()">☁ Guardar Reserva</button>
-                <button class="btn btn-success" onclick="descargarReporteExcel()">📥 Descargar Reporte en Excel (.xlsx)</button>
+                <button class="btn btn-success" id="btnDescargaExcel" onclick="descargarReporteExcel()">📥 Descargar Reporte en Excel (.xlsx)</button>
             </div>
         </div>
     </div>
@@ -861,7 +861,6 @@
 
         const horario12H = `${a12H(horaInicio)} a ${a12H(horaFin)}`;
 
-        // 1. Guardado optimista visual
         const nuevaReservaLocal = {
             Fecha: fecha,
             HoraInicio: a24H(horaInicio),
@@ -881,7 +880,6 @@
         document.getElementById('txtNombre').value = '';
         mostrarMensaje(`¡Reserva confirmada en <strong>${espacio}</strong> (${horario12H})!`, "ok");
 
-        // 2. Escritura directa en Google Sheets
         enviarDatosNube({
             accion: "guardar",
             Fecha: fecha,
@@ -922,8 +920,13 @@
         setTimeout(consultarDisponibilidadNube, 3000);
     }
 
-    // EXPORTACIÓN A EXCEL CORREGIDA
+    // DESCARGA DE EXCEL ROBUSTA Y COMPATIBLE CON MÓVIL Y ESCRITORIO
     function descargarReporteExcel() {
+        if (typeof XLSX === "undefined") {
+            mostrarMensaje("⚠️ La librería de Excel aún se está cargando. Intenta de nuevo en 3 segundos.", "error");
+            return;
+        }
+
         if (reservasNube.length === 0) {
             mostrarMensaje("⚠️ No hay reservas registradas para exportar.", "error");
             return;
@@ -1022,8 +1025,23 @@
             XLSX.utils.book_append_sheet(wb, wsBaseDatos, "BaseDatos_Auditoria");
 
             const nombreArchivo = `Reporte_Complejo_Deportivo_${fechaEmision.replace(/\//g, '-')}.xlsx`;
+
+            // Generación binaria y descarga forzada universal (inmune a bloqueos)
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             
-            XLSX.writeFile(wb, nombreArchivo);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nombreArchivo;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 1000);
+
             mostrarMensaje(`📥 Archivo descargado con éxito: <strong>${nombreArchivo}</strong>`, "ok");
         } catch (err) {
             console.error("Error al exportar a Excel:", err);

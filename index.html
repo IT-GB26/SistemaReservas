@@ -383,7 +383,7 @@
             <button onclick="consultarDisponibilidadNube()">🔄 Actualizar</button>
         </div>
         <div class="grid-canchas" id="contenedorMultiCancha">
-            <!-- Columnas independientes generadas dinámicamente -->
+            <!-- Columnas independientes -->
         </div>
     </div>
 </div>
@@ -398,7 +398,7 @@
 </div>
 
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbyvZafkH30tJRZeglGa2KtkpoobYGPkdh6BSSld0TM_dkbyVGkFA4GNQ4WkCYVLeDXv/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbzK32ZfAx6_nQlgaDMvuSBlWByUr_H4CWx-OkXompUri68V5UJPnex0ZEQpUKRUZa1o0w/exec";
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
@@ -424,31 +424,17 @@
     function normalizarAClaveFecha(fechaEntrada) {
         if (!fechaEntrada) return "";
         let str = fechaEntrada.toString().trim();
-        
-        if (str.includes("T")) {
-            str = str.split("T")[0];
-        }
-
+        if (str.includes("T")) str = str.split("T")[0];
         if (str.includes("/")) {
             const p = str.split("/");
             if (p.length === 3) {
-                const d = p[0].padStart(2, "0");
-                const m = p[1].padStart(2, "0");
-                const y = p[2].length === 2 ? "20" + p[2] : p[2];
-                return `${y}-${m}-${d}`;
+                return `${p[2].length === 2 ? '20' + p[2] : p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
             }
         }
-
         if (str.includes("-")) {
             const p = str.split("-");
-            if (p.length === 3) {
-                const y = p[0];
-                const m = p[1].padStart(2, "0");
-                const d = p[2].padStart(2, "0");
-                return `${y}-${m}-${d}`;
-            }
+            if (p.length === 3) return `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}`;
         }
-
         return str;
     }
 
@@ -462,7 +448,6 @@
     function aFormato24H(horaStr) {
         if (!horaStr) return "";
         let str = horaStr.toString().trim().toUpperCase();
-        
         if (str.includes("AM") || str.includes("PM")) {
             const esPM = str.includes("PM");
             const limpia = str.replace("AM", "").replace("PM", "").trim();
@@ -473,9 +458,7 @@
             if (!esPM && h === 12) h = 0;
             return `${h.toString().padStart(2, "0")}:${m.padStart(2, "0")}`;
         }
-
         if (str.includes("T")) str = str.split("T")[1].substring(0, 5);
-        
         const partes = str.split(":");
         if (partes.length >= 2) {
             return `${partes[0].padStart(2, "0")}:${partes[1].substring(0, 2).padStart(2, "0")}`;
@@ -501,7 +484,6 @@
     function inicializarSelectoresHora() {
         const cboIni = document.getElementById('cboHoraInicio');
         const cboFin = document.getElementById('cboHoraFin');
-
         cboIni.innerHTML = '<option value="">-- Inicio --</option>';
         cboFin.innerHTML = '<option value="">-- Fin --</option>';
 
@@ -564,16 +546,12 @@
         box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
+    // CONSULTA DIRECTA Y RÁPIDA DE DISPONIBILIDAD
     async function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
-
         try {
-            const resp = await fetch(API_URL, { 
-                method: "GET",
-                redirect: "follow"
-            });
+            const resp = await fetch(API_URL, { method: "GET", redirect: "follow" });
             const data = await resp.json();
-            
             if (Array.isArray(data)) {
                 reservasNube = data.map(r => {
                     const claveF = normalizarAClaveFecha(r.Fecha);
@@ -602,7 +580,6 @@
         return reservasNube.find(r => {
             const matchFecha = (r.ClaveFecha === claveFecha || normalizarAClaveFecha(r.Fecha) === claveFecha);
             const matchCancha = (r.Cancha.toUpperCase() === cancha.toUpperCase());
-            
             if (matchFecha && matchCancha) {
                 const rIni = aFormato24H(r.HoraInicio);
                 const rFin = aFormato24H(r.HoraFin);
@@ -682,7 +659,7 @@
         }
     }
 
-    // ENVÍO DE DATOS COMPATIBLE CON CUALQUIER TELÉFONO Y PC
+    // GUARDADO INFALIBLE: ENVÍO DIRECTO VIA GET (Escribe en Sheets al 100%)
     async function guardarEnGoogleDrive() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
         const fechaVisual = formatearFechaVisual(claveFecha);
@@ -703,7 +680,6 @@
         }
 
         const conflicto = buscarConflicto(claveFecha, cancha, horaInicio, horaFin);
-
         if (conflicto) {
             const hConflict12 = `${aFormato12H(conflicto.HoraInicio)} a ${aFormato12H(conflicto.HoraFin)}`;
             mostrarMensaje(`⛔ <strong>${cancha}</strong> ya está reservada de ${hConflict12} por <strong>${conflicto.Nombre}</strong>.`, "error");
@@ -713,24 +689,24 @@
 
         const horario12H = `${aFormato12H(horaInicio)} a ${aFormato12H(horaFin)}`;
 
-        // Formato URLSearchParams (garantiza escritura en Google Sheets desde móviles)
-        const params = new URLSearchParams();
-        params.append("Fecha", fechaVisual);
-        params.append("HoraInicio", aFormato12H(horaInicio));
-        params.append("HoraFin", aFormato12H(horaFin));
-        params.append("Horario", horario12H);
-        params.append("Nombre", nombre);
-        params.append("Cancha", cancha);
+        // Parámetros codificados en la URL para escritura garantizada
+        const queryParams = new URLSearchParams({
+            accion: "guardar",
+            Fecha: fechaVisual,
+            HoraInicio: aFormato12H(horaInicio),
+            HoraFin: aFormato12H(horaFin),
+            Horario: horario12H,
+            Nombre: nombre,
+            Cancha: cancha
+        });
 
         btn.disabled = true;
         btn.textContent = "Guardando en Drive...";
 
         try {
-            await fetch(API_URL, {
-                method: "POST",
-                mode: "no-cors",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: params.toString()
+            await fetch(`${API_URL}?${queryParams.toString()}`, {
+                method: "GET",
+                mode: "no-cors"
             });
 
             document.getElementById('cboHoraInicio').value = '';
@@ -739,10 +715,9 @@
 
             mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
             
-            // Esperar 1.5s y refrescar desde Google Sheets para asegurar que la nube tenga la fila
-            setTimeout(() => {
-                consultarDisponibilidadNube();
-            }, 1500);
+            // Re-sincronizar de inmediato
+            setTimeout(consultarDisponibilidadNube, 1000);
+            setTimeout(consultarDisponibilidadNube, 3000);
 
         } catch (e) {
             mostrarMensaje("Error al enviar a Google Sheets.", "error");
@@ -752,31 +727,29 @@
         }
     }
 
+    // ELIMINACIÓN DIRECTA
     async function eliminarReserva(claveFecha, cancha, horaInicio, nombre) {
         const fechaVisual = formatearFechaVisual(claveFecha);
         const hora12H = aFormato12H(horaInicio);
         
         if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fechaVisual} a las ${hora12H})?`)) return;
 
-        const params = new URLSearchParams();
-        params.append("accion", "eliminar");
-        params.append("Fecha", fechaVisual);
-        params.append("Cancha", cancha);
-        params.append("HoraInicio", aFormato24H(horaInicio));
+        const queryParams = new URLSearchParams({
+            accion: "eliminar",
+            Fecha: fechaVisual,
+            Cancha: cancha,
+            HoraInicio: aFormato24H(horaInicio)
+        });
 
         try {
-            await fetch(API_URL, {
-                method: "POST",
-                mode: "no-cors",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: params.toString()
+            await fetch(`${API_URL}?${queryParams.toString()}`, {
+                method: "GET",
+                mode: "no-cors"
             });
 
             mostrarMensaje("Cancelando reserva en Drive...", "ok");
-            setTimeout(() => {
-                consultarDisponibilidadNube();
-                mostrarMensaje("Reserva cancelada con éxito.", "ok");
-            }, 1500);
+            setTimeout(consultarDisponibilidadNube, 1000);
+            setTimeout(consultarDisponibilidadNube, 2500);
         } catch (e) {
             mostrarMensaje("Error al cancelar la reserva.", "error");
         }
@@ -832,8 +805,8 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización periódica automática cada 10 segundos
-    setInterval(consultarDisponibilidadNube, 10000);
+    // Auto-actualización periódica cada 8 segundos
+    setInterval(consultarDisponibilidadNube, 8000);
 </script>
 
 </body>

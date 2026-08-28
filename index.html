@@ -173,7 +173,7 @@
             text-align: center;
         }
 
-        /* Panel Comparativo Multi-Cancha */
+        /* Panel Comparativo */
         .schedule-header {
             background-color: #334155;
             color: #ffffff;
@@ -376,19 +376,17 @@
         </div>
     </div>
 
-    <!-- COMPARATIVO POR CANCHAS -->
+    <!-- PANEL DISPONIBILIDAD -->
     <div class="app-card">
         <div class="schedule-header">
             <span id="lblTituloHorario">Disponibilidad por Canchas</span>
             <button onclick="consultarDisponibilidadNube()">🔄 Actualizar</button>
         </div>
-        <div class="grid-canchas" id="contenedorMultiCancha">
-            <!-- Columnas generadas dinámicamente -->
-        </div>
+        <div class="grid-canchas" id="contenedorMultiCancha"></div>
     </div>
 </div>
 
-<!-- Modal Emergente -->
+<!-- Modal Conflicto -->
 <div class="modal-overlay" id="modalConflicto">
     <div class="modal-box">
         <h3>⛔ HORARIO YA RESERVADO</h3>
@@ -397,12 +395,8 @@
     </div>
 </div>
 
-<!-- Formulario oculto de envío seguro -->
-<iframe name="iframe_oculto" id="iframe_oculto" style="display:none;"></iframe>
-<form id="form_envio_nube" method="GET" target="iframe_oculto" style="display:none;"></form>
-
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbyiPbwISGAl-rO-nNi3H-iNlioDhYfHVRBL6SIfNZLsS_R4Fo19ke_h6HUbPCzd-hH48A/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbx_UPa4eJQIxAWUyDNLHJpeCnAVgaSvuE41ny27zxxTedeTZs6SVgKeVUQFx3pZW3MthA/exec";
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
@@ -574,10 +568,10 @@
                         Estado: r.Estado || "Confirmada"
                     };
                 });
-                lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas registradas)`;
+                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas registradas)`;
             }
         } catch (e) {
-            lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
+            lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas registradas)`;
         }
         renderizarTablasMultiCancha();
     }
@@ -665,21 +659,7 @@
         }
     }
 
-    function enviarDatosNube(objetoParametros) {
-        const form = document.getElementById('form_envio_nube');
-        form.action = API_URL;
-        form.innerHTML = "";
-        
-        for (const [key, value] of Object.entries(objetoParametros)) {
-            const input = document.createElement('input');
-            input.type = "hidden";
-            input.name = key;
-            input.value = value;
-            form.appendChild(input);
-        }
-        form.submit();
-    }
-
+    // ENVÍO DIRECTO Y ROBUSTO A GOOGLE APPS SCRIPT
     async function guardarEnGoogleDrive() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
         const fechaVisual = formatearFechaVisual(claveFecha);
@@ -690,7 +670,7 @@
         const btn = document.getElementById('btnGuardar');
 
         if (!claveFecha || !horaInicio || !horaFin || !nombre || !cancha) {
-            mostrarMensaje("⚠️ Por favor completa todos los campos requeridos.", "error");
+            mostrarMensaje("⚠️ Por favor completa todos los campos (Fecha, Cancha, Horas y Nombre).", "error");
             return;
         }
 
@@ -712,7 +692,7 @@
         btn.disabled = true;
         btn.textContent = "⏳ Guardando en Google Drive...";
 
-        enviarDatosNube({
+        const queryParams = new URLSearchParams({
             accion: "guardar",
             Fecha: fechaVisual,
             HoraInicio: aFormato12H(horaInicio),
@@ -720,19 +700,44 @@
             Horario: horario12H,
             Nombre: nombre,
             Cancha: cancha,
-            _t: Date.now()
+            _nocache: Date.now()
         });
 
-        document.getElementById('cboHoraInicio').value = '';
-        document.getElementById('cboHoraFin').value = '';
-        document.getElementById('txtNombre').value = '';
+        try {
+            // Petición directa a Google Apps Script
+            await fetch(`${API_URL}?${queryParams.toString()}`, {
+                method: "GET",
+                mode: "no-cors"
+            });
 
-        mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
-        btn.disabled = false;
-        btn.textContent = "☁ Guardar Reserva";
+            // Actualización inmediata local
+            reservasNube.push({
+                ClaveFecha: claveFecha,
+                Fecha: fechaVisual,
+                HoraInicio: horaInicio,
+                HoraFin: horaFin,
+                Horario: horario12H,
+                Nombre: nombre,
+                Cancha: cancha,
+                Estado: "Confirmada"
+            });
+            renderizarTablasMultiCancha();
 
-        setTimeout(consultarDisponibilidadNube, 1500);
-        setTimeout(consultarDisponibilidadNube, 3500);
+            document.getElementById('cboHoraInicio').value = '';
+            document.getElementById('cboHoraFin').value = '';
+            document.getElementById('txtNombre').value = '';
+
+            mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
+            
+            setTimeout(consultarDisponibilidadNube, 1500);
+            setTimeout(consultarDisponibilidadNube, 3500);
+
+        } catch (e) {
+            mostrarMensaje("Error al enviar la reserva.", "error");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "☁ Guardar Reserva";
+        }
     }
 
     async function eliminarReserva(claveFecha, cancha, horaInicio, nombre) {
@@ -741,22 +746,33 @@
         
         if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fechaVisual} a las ${hora12H})?`)) return;
 
-        enviarDatosNube({
+        reservasNube = reservasNube.filter(r => !(
+            (r.ClaveFecha === claveFecha || normalizarAClaveFecha(r.Fecha) === claveFecha) && 
+            r.Cancha.toUpperCase() === cancha.toUpperCase() && 
+            aFormato24H(r.HoraInicio) === aFormato24H(horaInicio)
+        ));
+        renderizarTablasMultiCancha();
+
+        const queryParams = new URLSearchParams({
             accion: "eliminar",
             Fecha: fechaVisual,
             Cancha: cancha,
             HoraInicio: aFormato24H(horaInicio),
-            _t: Date.now()
+            _nocache: Date.now()
         });
 
-        mostrarMensaje("Reserva cancelada con éxito.", "ok");
-        setTimeout(consultarDisponibilidadNube, 1500);
-        setTimeout(consultarDisponibilidadNube, 3500);
+        try {
+            await fetch(`${API_URL}?${queryParams.toString()}`, {
+                method: "GET",
+                mode: "no-cors"
+            });
+            mostrarMensaje("Reserva cancelada con éxito.", "ok");
+            setTimeout(consultarDisponibilidadNube, 1500);
+        } catch (e) {
+            mostrarMensaje("Error al cancelar la reserva.", "error");
+        }
     }
 
-    // ==========================================
-    // REPORTE EXCEL MEJORADO Y PROFESIONAL
-    // ==========================================
     function descargarReporteExcel() {
         if (reservasNube.length === 0) {
             mostrarMensaje("⚠️ No hay reservas registradas para exportar.", "error");
@@ -767,16 +783,13 @@
         const fechaEmision = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const horaEmision = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-        // Ordenar cronológicamente
         const ordenadas = [...reservasNube].sort((a, b) => {
             const fA = a.ClaveFecha + a.Cancha + aFormato24H(a.HoraInicio);
             const fB = b.ClaveFecha + b.Cancha + aFormato24H(b.HoraInicio);
             return fA.localeCompare(fB);
         });
 
-        // ---------------------------------------------------------
-        // HOJA 1: REPORTE EJECUTIVO POR CANCHA CON KPIs
-        // ---------------------------------------------------------
+        // HOJA 1: REPORTE EJECUTIVO
         const hojaEjecutiva = [
             ["SISTEMA DE GESTIÓN Y RESERVA DE CANCHAS DEPORTIVAS"],
             ["REPORTE EJECUTIVO CONSOLIDADO"],
@@ -810,17 +823,9 @@
         });
 
         const wsEjecutivo = XLSX.utils.aoa_to_sheet(hojaEjecutiva);
-        wsEjecutivo['!cols'] = [
-            { wch: 6 },   // #
-            { wch: 16 },  // Fecha
-            { wch: 24 },  // Horario
-            { wch: 32 },  // Cliente
-            { wch: 22 }   // Estado
-        ];
+        wsEjecutivo['!cols'] = [{ wch: 6 }, { wch: 16 }, { wch: 24 }, { wch: 32 }, { wch: 22 }];
 
-        // ---------------------------------------------------------
-        // HOJA 2: CRONOGRAMA MAESTRO GENERAL
-        // ---------------------------------------------------------
+        // HOJA 2: CRONOGRAMA MAESTRO
         const hojaCronograma = [
             ["CRONOGRAMA GENERAL CONSOLIDADO - TODAS LAS SEDES"],
             [`Actualizado al: ${fechaEmision} ${horaEmision}`],
@@ -842,20 +847,9 @@
         });
 
         const wsCronograma = XLSX.utils.aoa_to_sheet(hojaCronograma);
-        wsCronograma['!cols'] = [
-            { wch: 6 },   // ID
-            { wch: 14 },  // Fecha
-            { wch: 26 },  // Cancha
-            { wch: 14 },  // Hora Inicio
-            { wch: 14 },  // Hora Fin
-            { wch: 22 },  // Horario Completo
-            { wch: 30 },  // Cliente
-            { wch: 16 }   // Estado
-        ];
+        wsCronograma['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 30 }, { wch: 16 }];
 
-        // ---------------------------------------------------------
-        // HOJA 3: BASE DE DATOS PLANA (Para Tablas Dinámicas)
-        // ---------------------------------------------------------
+        // HOJA 3: BASE DE DATOS PLANA
         const wsBaseDatos = XLSX.utils.json_to_sheet(ordenadas.map((r, i) => ({
             "Item": i + 1,
             "Fecha": r.Fecha,
@@ -866,11 +860,8 @@
             "Cliente": r.Nombre,
             "Estado": r.Estado || "Confirmada"
         })));
-        wsBaseDatos['!cols'] = [
-            { wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 28 }, { wch: 14 }
-        ];
+        wsBaseDatos['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 28 }, { wch: 14 }];
 
-        // Construir el libro con las 3 pestañas
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, wsEjecutivo, "Reporte_Ejecutivo");
         XLSX.utils.book_append_sheet(wb, wsCronograma, "Cronograma_Maestro");
@@ -884,7 +875,6 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización automática continua cada 6 segundos
     setInterval(consultarDisponibilidadNube, 6000);
 </script>
 

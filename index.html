@@ -389,8 +389,8 @@
 <!-- Modal Emergente -->
 <div class="modal-overlay" id="modalConflicto">
     <div class="modal-box">
-        <h3>⛔ HORARIO YA RESERVADO</h3>
-        <p id="modalTextoDetalle">Esta cancha ya se encuentra ocupada.</p>
+        <h3>⛔ HORARIO NO DISPONIBLE</h3>
+        <p id="modalTextoDetalle">No se puede realizar la reserva en este horario.</p>
         <button class="modal-btn" onclick="cerrarModal()">Entendido</button>
     </div>
 </div>
@@ -417,7 +417,10 @@
         return `${year}-${month}-${day}`;
     }
 
-    inputFecha.value = obtenerFechaLocalISO();
+    const fechaHoyISO = obtenerFechaLocalISO();
+    inputFecha.value = fechaHoyISO;
+    // Bloqueo en el calendario para impedir seleccionar días pasados
+    inputFecha.min = fechaHoyISO;
 
     function normalizarFecha(str) {
         if (!str) return "";
@@ -521,7 +524,18 @@
         const [y, m, d] = inputFecha.value.split('-').map(Number);
         const f = new Date(y, m - 1, d);
         f.setDate(f.getDate() + delta);
-        inputFecha.value = obtenerFechaLocalISO(f);
+        
+        const fechaResult = obtenerFechaLocalISO(f);
+        const hoy = obtenerFechaLocalISO();
+        
+        // Evitar retroceder a días anteriores a hoy mediante los botones de navegación
+        if (fechaResult < hoy) {
+            mostrarMensaje("⚠️ No puedes navegar a fechas anteriores a hoy.", "error");
+            inputFecha.value = hoy;
+        } else {
+            inputFecha.value = fechaResult;
+        }
+
         renderizarTablasMultiCancha();
         verificarCruceEnVivo();
     }
@@ -533,6 +547,11 @@
     }
 
     function cambiarFechaManual() {
+        const hoy = obtenerFechaLocalISO();
+        if (inputFecha.value < hoy) {
+            mostrarMensaje("⚠️ No puedes seleccionar fechas que ya pasaron.", "error");
+            inputFecha.value = hoy;
+        }
         renderizarTablasMultiCancha();
         verificarCruceEnVivo();
     }
@@ -544,7 +563,6 @@
         box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    // CONSULTA SINCRONIZADA
     async function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
         try {
@@ -562,9 +580,9 @@
                     MinInicio: aMinutos(r.HoraInicio),
                     MinFin: aMinutos(r.HoraFin),
                     Horario: `${a12H(r.HoraInicio)} a ${a12H(r.HoraFin)}`,
-                    Nombre: (r.Nombre || "").replace(/^'/, "").trim(),
-                    Cancha: (r.Cancha || "").replace(/^'/, "").trim(),
-                    Estado: (r.Estado || "Confirmada").replace(/^'/, "").trim()
+                    Nombre: (r.Nombre || "").trim(),
+                    Cancha: (r.Cancha || "").trim(),
+                    Estado: (r.Estado || "Confirmada").trim()
                 }));
 
                 lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
@@ -636,21 +654,42 @@
         });
     }
 
+    // VALIDACIÓN EN VIVO: Fechas pasadas, horas pasadas y conflictos de reserva
     function verificarCruceEnVivo() {
         const fecha = normalizarFecha(inputFecha.value);
         const horaInicio = document.getElementById('cboHoraInicio').value;
         const horaFin = document.getElementById('cboHoraFin').value;
         const cancha = document.getElementById('cboCancha').value;
+        const hoy = obtenerFechaLocalISO();
 
-        if (!fecha || !horaInicio || !horaFin || !cancha) return false;
+        if (!fecha) return false;
 
+        // 1. Validación de fecha pasada
+        if (fecha < hoy) {
+            mostrarMensaje("⛔ No puedes reservar en una fecha que ya pasó.", "error");
+            return false;
+        }
+
+        if (!horaInicio || !horaFin || !cancha) return false;
+
+        // 2. Validación de coherencia horaria
         if (aMinutos(horaInicio) >= aMinutos(horaFin)) {
             mostrarMensaje("⚠️ La hora final debe ser posterior a la hora de inicio.", "error");
             return false;
         }
 
-        const conflicto = buscarConflicto(fecha, cancha, horaInicio, horaFin);
+        // 3. Validación de hora pasada si es el día de hoy
+        if (fecha === hoy) {
+            const ahora = new Date();
+            const minutosActuales = (ahora.getHours() * 60) + ahora.getMinutes();
+            if (aMinutos(horaInicio) <= minutosActuales) {
+                mostrarMensaje("⛔ La hora de inicio seleccionada ya pasó. Elige un horario futuro.", "error");
+                return false;
+            }
+        }
 
+        // 4. Validación de conflicto con otra reserva
+        const conflicto = buscarConflicto(fecha, cancha, horaInicio, horaFin);
         if (conflicto) {
             const hConflict12 = `${a12H(conflicto.HoraInicio)} a ${a12H(conflicto.HoraFin)}`;
             mostrarMensaje(`⛔ <strong>${cancha}</strong> YA ESTÁ RESERVADA de ${hConflict12} por <strong>${conflicto.Nombre}</strong>.`, "error");
@@ -661,25 +700,42 @@
         }
     }
 
-    // GUARDADO INSTANTÁNEO EN PANTALLA Y EN DRIVE
     async function guardarEnGoogleDrive() {
         const fecha = normalizarFecha(inputFecha.value);
         const horaInicio = document.getElementById('cboHoraInicio').value;
         const horaFin = document.getElementById('cboHoraFin').value;
         const nombre = document.getElementById('txtNombre').value.trim();
         const cancha = document.getElementById('cboCancha').value;
-        const btn = document.getElementById('btnGuardar');
+        const hoy = obtenerFechaLocalISO();
 
         if (!fecha || !horaInicio || !horaFin || !nombre || !cancha) {
             mostrarMensaje("⚠️ Por favor completa todos los campos requeridos.", "error");
             return;
         }
 
+        // Validación: Fecha pasada
+        if (fecha < hoy) {
+            mostrarMensaje("⛔ No se puede guardar una reserva en una fecha pasada.", "error");
+            return;
+        }
+
+        // Validación: Hora coherente
         if (aMinutos(horaInicio) >= aMinutos(horaFin)) {
             mostrarMensaje("⚠️ La hora final debe ser mayor que la hora inicial.", "error");
             return;
         }
 
+        // Validación: Hora que ya pasó hoy
+        if (fecha === hoy) {
+            const ahora = new Date();
+            const minutosActuales = (ahora.getHours() * 60) + ahora.getMinutes();
+            if (aMinutos(horaInicio) <= minutosActuales) {
+                mostrarMensaje("⛔ No puedes reservar una hora que ya pasó el día de hoy.", "error");
+                return;
+            }
+        }
+
+        // Validación: Cruce de horarios
         const conflicto = buscarConflicto(fecha, cancha, horaInicio, horaFin);
         if (conflicto) {
             const hConflict12 = `${a12H(conflicto.HoraInicio)} a ${a12H(conflicto.HoraFin)}`;
@@ -690,7 +746,7 @@
 
         const horario12H = `${a12H(horaInicio)} a ${a12H(horaFin)}`;
 
-        // 1. ACTUALIZACIÓN VISUAL INMEDIATA (0 segundos de espera)
+        // Actualización visual inmediata
         const nuevaReservaLocal = {
             Fecha: fecha,
             HoraInicio: a24H(horaInicio),
@@ -710,7 +766,7 @@
         document.getElementById('txtNombre').value = '';
         mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
 
-        // 2. ENVIAR A GOOGLE DRIVE EN SEGUNDO PLANO
+        // Enviar a Google Drive
         const queryParams = new URLSearchParams({
             accion: "guardar",
             Fecha: fecha,
@@ -734,7 +790,6 @@
         const hora12H = a12H(horaInicio);
         if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fecha} a las ${hora12H})?`)) return;
 
-        // Eliminación visual inmediata
         reservasNube = reservasNube.filter(r => !(
             r.Fecha === fecha && 
             r.Cancha.toUpperCase() === cancha.toUpperCase() && 
@@ -759,7 +814,6 @@
         } catch (e) {}
     }
 
-    // EXPORTACIÓN EXCEL EN 3 PESTAÑAS
     function descargarReporteExcel() {
         if (reservasNube.length === 0) {
             mostrarMensaje("⚠️ No hay reservas registradas para exportar.", "error");
@@ -861,7 +915,7 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización continua cada 2 segundos entre todos los dispositivos
+    // Sincronización continua cada 2 segundos
     setInterval(consultarDisponibilidadNube, 2000);
 </script>
 

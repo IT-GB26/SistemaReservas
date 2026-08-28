@@ -397,8 +397,12 @@
     </div>
 </div>
 
+<!-- Formulario Invisible y seguro para garantizar escritura en Google Drive desde teléfonos -->
+<iframe name="iframe_oculto" id="iframe_oculto" style="display:none;"></iframe>
+<form id="form_envio_nube" method="GET" target="iframe_oculto" style="display:none;"></form>
+
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbzWoF-oUJ2hr3lbycEkM8tuuLXs-BjFIcBk0dRJ6WphrMOt8reO_Ds54W69v1-VZq-DrA/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbyiPbwISGAl-rO-nNi3H-iNlioDhYfHVRBL6SIfNZLsS_R4Fo19ke_h6HUbPCzd-hH48A/exec";
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
@@ -546,7 +550,6 @@
         box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    // CONSULTA SIN CACHÉ PARA SINCRONIZAR TODOS LOS DISPOSITIVOS
     async function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
         try {
@@ -571,10 +574,10 @@
                         Estado: r.Estado || "Confirmada"
                     };
                 });
-                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas registradas)`;
+                lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas registradas)`;
             }
         } catch (e) {
-            lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas)`;
+            lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
         }
         renderizarTablasMultiCancha();
     }
@@ -662,7 +665,22 @@
         }
     }
 
-    // GUARDADO DIRECTO
+    // ENVÍO MEDIANTE FORMULARIO DIRECTO AL SERVIDOR (INMUNIDAD TOTAL CONTRA BLOQUEOS MÓVILES)
+    function enviarDatosNube(objetoParametros) {
+        const form = document.getElementById('form_envio_nube');
+        form.action = API_URL;
+        form.innerHTML = "";
+        
+        for (const [key, value] of Object.entries(objetoParametros)) {
+            const input = document.createElement('input');
+            input.type = "hidden";
+            input.name = key;
+            input.value = value;
+            form.appendChild(input);
+        }
+        form.submit();
+    }
+
     async function guardarEnGoogleDrive() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
         const fechaVisual = formatearFechaVisual(claveFecha);
@@ -673,7 +691,7 @@
         const btn = document.getElementById('btnGuardar');
 
         if (!claveFecha || !horaInicio || !horaFin || !nombre || !cancha) {
-            mostrarMensaje("⚠️ Por favor completa todos los campos (Fecha, Cancha, Horas y Nombre).", "error");
+            mostrarMensaje("⚠️ Por favor completa todos los campos requeridos.", "error");
             return;
         }
 
@@ -695,7 +713,8 @@
         btn.disabled = true;
         btn.textContent = "⏳ Guardando en Google Drive...";
 
-        const queryParams = new URLSearchParams({
+        // Escritura física en Google Sheets
+        enviarDatosNube({
             accion: "guardar",
             Fecha: fechaVisual,
             HoraInicio: aFormato12H(horaInicio),
@@ -703,18 +722,8 @@
             Horario: horario12H,
             Nombre: nombre,
             Cancha: cancha,
-            _nocache: Date.now()
+            _t: Date.now()
         });
-
-        try {
-            await fetch(`${API_URL}?${queryParams.toString()}`, {
-                method: "GET",
-                mode: "no-cors"
-            });
-        } catch (e) {
-            const img = new Image();
-            img.src = `${API_URL}?${queryParams.toString()}`;
-        }
 
         document.getElementById('cboHoraInicio').value = '';
         document.getElementById('cboHoraFin').value = '';
@@ -724,9 +733,9 @@
         btn.disabled = false;
         btn.textContent = "☁ Guardar Reserva";
 
-        // Consulta inmediata desde la nube
-        setTimeout(consultarDisponibilidadNube, 1200);
-        setTimeout(consultarDisponibilidadNube, 3000);
+        // Re-sincronizar de inmediato
+        setTimeout(consultarDisponibilidadNube, 1500);
+        setTimeout(consultarDisponibilidadNube, 3500);
     }
 
     async function eliminarReserva(claveFecha, cancha, horaInicio, nombre) {
@@ -735,27 +744,17 @@
         
         if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fechaVisual} a las ${hora12H})?`)) return;
 
-        const queryParams = new URLSearchParams({
+        enviarDatosNube({
             accion: "eliminar",
             Fecha: fechaVisual,
             Cancha: cancha,
             HoraInicio: aFormato24H(horaInicio),
-            _nocache: Date.now()
+            _t: Date.now()
         });
 
-        try {
-            await fetch(`${API_URL}?${queryParams.toString()}`, {
-                method: "GET",
-                mode: "no-cors"
-            });
-        } catch (e) {
-            const img = new Image();
-            img.src = `${API_URL}?${queryParams.toString()}`;
-        }
-
         mostrarMensaje("Reserva cancelada con éxito.", "ok");
-        setTimeout(consultarDisponibilidadNube, 1200);
-        setTimeout(consultarDisponibilidadNube, 3000);
+        setTimeout(consultarDisponibilidadNube, 1500);
+        setTimeout(consultarDisponibilidadNube, 3500);
     }
 
     function descargarReporteExcel() {
@@ -808,7 +807,7 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Sincronización continua en segundo plano cada 6 segundos
+    // Sincronización automática periódica cada 6 segundos
     setInterval(consultarDisponibilidadNube, 6000);
 </script>
 

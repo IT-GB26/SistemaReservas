@@ -398,7 +398,7 @@
 </div>
 
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbzK32ZfAx6_nQlgaDMvuSBlWByUr_H4CWx-OkXompUri68V5UJPnex0ZEQpUKRUZa1o0w/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbzWoF-oUJ2hr3lbycEkM8tuuLXs-BjFIcBk0dRJ6WphrMOt8reO_Ds54W69v1-VZq-DrA/exec";
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
@@ -546,10 +546,14 @@
         box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
+    // CONSULTA SIN CACHÉ PARA SINCRONIZAR TODOS LOS DISPOSITIVOS
     async function consultarDisponibilidadNube() {
         const lbl = document.getElementById('lblSyncStatus');
         try {
-            const resp = await fetch(API_URL, { method: "GET", redirect: "follow" });
+            const resp = await fetch(`${API_URL}?_nocache=${Date.now()}`, { 
+                method: "GET", 
+                redirect: "follow" 
+            });
             const data = await resp.json();
             if (Array.isArray(data)) {
                 reservasNube = data.map(r => {
@@ -567,10 +571,10 @@
                         Estado: r.Estado || "Confirmada"
                     };
                 });
-                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
+                lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas registradas)`;
             }
         } catch (e) {
-            lbl.textContent = `🟢 Conectado con Google Drive (${reservasNube.length} reservas)`;
+            lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas)`;
         }
         renderizarTablasMultiCancha();
     }
@@ -658,7 +662,7 @@
         }
     }
 
-    // ACCIÓN GUARDAR CON VALIDACIÓN INMEDIATA Y ENVÍO GARANTIZADO
+    // GUARDADO DIRECTO
     async function guardarEnGoogleDrive() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
         const fechaVisual = formatearFechaVisual(claveFecha);
@@ -689,22 +693,8 @@
         const horario12H = `${aFormato12H(horaInicio)} a ${aFormato12H(horaFin)}`;
 
         btn.disabled = true;
-        btn.textContent = "⏳ Guardando en Drive...";
+        btn.textContent = "⏳ Guardando en Google Drive...";
 
-        // 1. Actualización visual instantánea en la pantalla actual
-        reservasNube.push({
-            ClaveFecha: claveFecha,
-            Fecha: fechaVisual,
-            HoraInicio: horaInicio,
-            HoraFin: horaFin,
-            Horario: horario12H,
-            Nombre: nombre,
-            Cancha: cancha,
-            Estado: "Confirmada"
-        });
-        renderizarTablasMultiCancha();
-
-        // 2. Parámetros de envío
         const queryParams = new URLSearchParams({
             accion: "guardar",
             Fecha: fechaVisual,
@@ -712,19 +702,18 @@
             HoraFin: aFormato12H(horaFin),
             Horario: horario12H,
             Nombre: nombre,
-            Cancha: cancha
+            Cancha: cancha,
+            _nocache: Date.now()
         });
 
-        // 3. Envío con doble técnica (fetch + Image fallback) para garantizar escritura en Google Drive
         try {
             await fetch(`${API_URL}?${queryParams.toString()}`, {
                 method: "GET",
                 mode: "no-cors"
             });
         } catch (e) {
-            // Si el navegador bloquea fetch, usamos Image beacon
             const img = new Image();
-            img.src = `${API_URL}?${queryParams.toString()}&_r=${Math.random()}`;
+            img.src = `${API_URL}?${queryParams.toString()}`;
         }
 
         document.getElementById('cboHoraInicio').value = '';
@@ -735,8 +724,9 @@
         btn.disabled = false;
         btn.textContent = "☁ Guardar Reserva";
 
-        // Re-sincronizar con Google Sheets
-        setTimeout(consultarDisponibilidadNube, 1500);
+        // Consulta inmediata desde la nube
+        setTimeout(consultarDisponibilidadNube, 1200);
+        setTimeout(consultarDisponibilidadNube, 3000);
     }
 
     async function eliminarReserva(claveFecha, cancha, horaInicio, nombre) {
@@ -745,19 +735,12 @@
         
         if (!confirm(`¿Cancelar la reserva de "${nombre}" en ${cancha} (${fechaVisual} a las ${hora12H})?`)) return;
 
-        // Eliminación visual inmediata
-        reservasNube = reservasNube.filter(r => !(
-            (r.ClaveFecha === claveFecha || normalizarAClaveFecha(r.Fecha) === claveFecha) && 
-            r.Cancha.toUpperCase() === cancha.toUpperCase() && 
-            aFormato24H(r.HoraInicio) === aFormato24H(horaInicio)
-        ));
-        renderizarTablasMultiCancha();
-
         const queryParams = new URLSearchParams({
             accion: "eliminar",
             Fecha: fechaVisual,
             Cancha: cancha,
-            HoraInicio: aFormato24H(horaInicio)
+            HoraInicio: aFormato24H(horaInicio),
+            _nocache: Date.now()
         });
 
         try {
@@ -767,11 +750,12 @@
             });
         } catch (e) {
             const img = new Image();
-            img.src = `${API_URL}?${queryParams.toString()}&_r=${Math.random()}`;
+            img.src = `${API_URL}?${queryParams.toString()}`;
         }
 
         mostrarMensaje("Reserva cancelada con éxito.", "ok");
-        setTimeout(consultarDisponibilidadNube, 1500);
+        setTimeout(consultarDisponibilidadNube, 1200);
+        setTimeout(consultarDisponibilidadNube, 3000);
     }
 
     function descargarReporteExcel() {
@@ -786,7 +770,6 @@
             return fA.localeCompare(fB);
         });
 
-        // Hoja 1: Resumen Organizado
         const reporteData = [["REPORTE GENERAL DE RESERVAS POR SEDE"], []];
         const canchasUnicas = [...new Set(ordenadas.map(r => r.Cancha))];
 
@@ -804,7 +787,6 @@
         const wsRep = XLSX.utils.aoa_to_sheet(reporteData);
         wsRep['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 28 }, { wch: 14 }];
 
-        // Hoja 2: Base de Datos Plana
         const wsBD = XLSX.utils.json_to_sheet(ordenadas.map(r => ({
             "Fecha": r.Fecha,
             "Hora Inicio": aFormato12H(aFormato24H(r.HoraInicio)),
@@ -826,8 +808,8 @@
     inicializarSelectoresHora();
     consultarDisponibilidadNube();
 
-    // Auto-actualización periódica cada 8 segundos
-    setInterval(consultarDisponibilidadNube, 8000);
+    // Sincronización continua en segundo plano cada 6 segundos
+    setInterval(consultarDisponibilidadNube, 6000);
 </script>
 
 </body>

@@ -396,7 +396,7 @@
 </div>
 
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbxCobZZd25J95v-LwoK66Sd8TKTiH_1j-4b31lXIS2gkEaUrUUQKXGFuu3eFCwbyzsY_w/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxvoKVXwJv7DiNY2rV_U8dbKAFUElLt7EOaum646L0Imx0mG0d79OXpWsWGe2FrMBAwiQ/exec";
 
     const canchasDisponibles = ["Cancha La Esmeralda", "Cancha San Francisco", "Cancha Coatepeque"];
 
@@ -419,6 +419,7 @@
 
     inputFecha.value = obtenerFechaLocalISO();
 
+    // Normaliza cualquier fecha a formato estándar YYYY-MM-DD
     function normalizarAClaveFecha(fechaEntrada) {
         if (!fechaEntrada) return "";
         let str = fechaEntrada.toString().trim().replace(/^'/, "");
@@ -450,9 +451,10 @@
         return claveFecha;
     }
 
+    // Convierte cualquier formato horario a minutos del día (0 a 1440 min)
     function horaAMinutos(horaStr) {
         if (!horaStr) return 0;
-        let str = horaStr.toString().trim().toUpperCase();
+        let str = horaStr.toString().trim().toUpperCase().replace(/^'/, "");
         let esPM = str.includes("PM");
         let esAM = str.includes("AM");
         str = str.replace("AM", "").replace("PM", "").trim();
@@ -572,9 +574,9 @@
                         HoraInicio: hIni,
                         HoraFin: hFin,
                         Horario: `${aFormato12H(hIni)} a ${aFormato12H(hFin)}`,
-                        Nombre: r.Nombre || "",
-                        Cancha: (r.Cancha || "").trim(),
-                        Estado: r.Estado || "Confirmada"
+                        Nombre: (r.Nombre || "").replace(/^'/, "").trim(),
+                        Cancha: (r.Cancha || "").replace(/^'/, "").trim(),
+                        Estado: (r.Estado || "Confirmada").replace(/^'/, "").trim()
                     };
                 });
                 lbl.textContent = `🟢 Conectado (${reservasNube.length} reservas registradas)`;
@@ -585,12 +587,13 @@
         renderizarTablasMultiCancha();
     }
 
+    // Comprueba coincidencia horaria exacta por minutos
     function buscarConflicto(claveFecha, cancha, hIniStr, hFinStr) {
         const minInicioNuevo = horaAMinutos(hIniStr);
         const minFinNuevo = horaAMinutos(hFinStr);
 
         return reservasNube.find(r => {
-            const rClave = normalizarAClaveFecha(r.Fecha || r.ClaveFecha);
+            const rClave = normalizarAClaveFecha(r.ClaveFecha || r.Fecha);
             const matchFecha = (rClave === claveFecha);
             const matchCancha = (r.Cancha.trim().toUpperCase() === cancha.trim().toUpperCase());
 
@@ -673,7 +676,6 @@
         }
     }
 
-    // ENVÍO DIRECTO Y ROBUSTO A GOOGLE APPS SCRIPT
     async function guardarEnGoogleDrive() {
         const claveFecha = normalizarAClaveFecha(inputFecha.value);
         const fechaVisual = formatearFechaVisual(claveFecha);
@@ -718,10 +720,11 @@
         });
 
         try {
-            await fetch(`${API_URL}?${queryParams.toString()}`, {
+            const resp = await fetch(`${API_URL}?${queryParams.toString()}`, {
                 method: "GET",
                 redirect: "follow"
             });
+            await resp.json();
 
             document.getElementById('cboHoraInicio').value = '';
             document.getElementById('cboHoraFin').value = '';
@@ -729,7 +732,7 @@
 
             mostrarMensaje(`¡Reserva confirmada en <strong>${cancha}</strong> (${horario12H})!`, "ok");
             
-            // Reconsultar desde Google Sheets para reflejar inmediatamente
+            // Recargar datos directamente desde Google Sheets
             await consultarDisponibilidadNube();
 
         } catch (e) {
@@ -755,10 +758,11 @@
         });
 
         try {
-            await fetch(`${API_URL}?${queryParams.toString()}`, {
+            const resp = await fetch(`${API_URL}?${queryParams.toString()}`, {
                 method: "GET",
                 redirect: "follow"
             });
+            await resp.json();
             mostrarMensaje("Reserva cancelada con éxito.", "ok");
             await consultarDisponibilidadNube();
         } catch (e) {
@@ -785,9 +789,7 @@
             return fA.localeCompare(fB);
         });
 
-        // ---------------------------------------------------------
-        // HOJA 1: REPORTE EJECUTIVO POR CANCHA CON KPIs
-        // ---------------------------------------------------------
+        // HOJA 1: REPORTE EJECUTIVO POR CANCHA
         const hojaEjecutiva = [
             ["SISTEMA DE GESTIÓN Y RESERVA DE CANCHAS DEPORTIVAS"],
             ["REPORTE EJECUTIVO CONSOLIDADO"],
@@ -823,9 +825,7 @@
         const wsEjecutivo = XLSX.utils.aoa_to_sheet(hojaEjecutiva);
         wsEjecutivo['!cols'] = [{ wch: 6 }, { wch: 16 }, { wch: 24 }, { wch: 32 }, { wch: 22 }];
 
-        // ---------------------------------------------------------
-        // HOJA 2: CRONOGRAMA MAESTRO GENERAL
-        // ---------------------------------------------------------
+        // HOJA 2: CRONOGRAMA MAESTRO
         const hojaCronograma = [
             ["CRONOGRAMA GENERAL CONSOLIDADO - TODAS LAS SEDES"],
             [`Actualizado al: ${fechaEmision} ${horaEmision}`],
@@ -849,9 +849,7 @@
         const wsCronograma = XLSX.utils.aoa_to_sheet(hojaCronograma);
         wsCronograma['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 30 }, { wch: 16 }];
 
-        // ---------------------------------------------------------
         // HOJA 3: BASE DE DATOS PLANA
-        // ---------------------------------------------------------
         const wsBaseDatos = XLSX.utils.json_to_sheet(ordenadas.map((r, i) => ({
             "Item": i + 1,
             "Fecha": r.Fecha,
